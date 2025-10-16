@@ -1,60 +1,7 @@
 {
   "registry_version": "1.0",
-  "description": "Artifact registry for Anti Echo Chamber embeddings and metadata.",
+  "description": "Artifact registry for unstructured-project embeddings and metadata.",
   "last_updated": null,
-  "batches": [
-    {
-      "schema_version": 2,
-      "batch_id": "batch_20251016T000018Z_57b202ed",
-      "created_at": "20251016T000018Z",
-      "models": {
-        "topic_model": "intfloat/e5-base-v2",
-        "stance_model": "Snowflake/snowflake-arctic-embed-l",
-        "dim": 1024,
-        "dtype": "float16",
-        "pooling": "mean",
-        "chunk_tokens": 512,
-        "normalize": true
-      },
-      "counts": {
-        "topic": 32,
-        "stance": 13
-      },
-      "hf_dataset_id": "zanimal/anti-echo-artifacts",
-      "paths": {
-        "embeddings_topic": "batches/batch_20251016T000018Z_57b202ed/embeddings_topic.npz",
-        "embeddings_stance": "batches/batch_20251016T000018Z_57b202ed/embeddings_stance.npz",
-        "metadata_topic": "batches/batch_20251016T000018Z_57b202ed/metadata_topic.jsonl",
-        "metadata_stance": "batches/batch_20251016T000018Z_57b202ed/metadata_stance.jsonl",
-        "manifest": "batches/batch_20251016T000018Z_57b202ed/manifest.json"
-      }
-    },
-    {
-      "schema_version": 2,
-      "batch_id": "batch_20251016T003027Z_48af172f",
-      "created_at": "20251016T003027Z",
-      "models": {
-        "topic_model": "intfloat/e5-base-v2",
-        "stance_model": "all-mpnet-base-v2",
-        "dim": 768,
-        "dtype": "float32",
-        "pooling": "mean",
-        "chunk_tokens": 512,
-        "normalize": true
-      },
-      "counts": {
-        "topic": 1672,
-        "stance": 444
-      },
-      "hf_dataset_id": "zanimal/anti-echo-artifacts",
-      "paths": {
-        "embeddings_topic": "batches/batch_20251016T003027Z_48af172f/embeddings_topic.npz",
-        "embeddings_stance": "batches/batch_20251016T003027Z_48af172f/embeddings_stance.npz",
-        "metadata_topic": "batches/batch_20251016T003027Z_48af172f/metadata_topic.jsonl",
-        "metadata_stance": "batches/batch_20251016T003027Z_48af172f/metadata_stance.jsonl",
-        "manifest": "batches/batch_20251016T003027Z_48af172f/manifest.json"
-      }
-    }
-  ],
-  "version": 3
+  "batches": [],
+  "version": 1
 }
