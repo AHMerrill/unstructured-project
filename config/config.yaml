@@ -4,6 +4,12 @@ version: 1
 # === Hugging Face dataset for artifact storage ===
 hf_dataset_id: "zanimal/unstructured-project"
 
+# === GitHub repository for registry + feed state ===
+github:
+  owner: "AHMerrill"
+  repo: "unstructured-project"
+  branch: "main"
+
 # === Local Chroma collections ===
 chroma_collections:
   topic: "unstructured_topic"
