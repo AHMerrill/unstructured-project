@@ -1,7 +1,7 @@
 # anti echo chamber
 
 Builds an embedding index of news and commentary for studying topic framing and sentiment polarity across sources.  
-This repository handles scraping, embedding, batching, and coordination for the Hugging Face dataset [`zanimal/unstructured-project`][https://huggingface.co/datasets/zanimal/anti-echo-artifacts](https://huggingface.co/datasets/zanimal/unstructured-project)).
+This repository handles scraping, embedding, batching, and coordination for the Hugging Face dataset [`zanimal/unstructured-project`](https://huggingface.co/datasets/zanimal/unstructured-project).
 
 ---
 
