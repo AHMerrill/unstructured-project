@@ -1,13 +1,13 @@
-# === anti-echo-chamber project config (v6: SentenceTransformer + GPT hybrid stance system) ===
-version: 6
+# === unstructured-project config (v1: SentenceTransformer + GPT hybrid stance system) ===
+version: 1
 
 # === Hugging Face dataset for artifact storage ===
-hf_dataset_id: "zanimal/anti-echo-artifacts"
+hf_dataset_id: "zanimal/unstructured-project"
 
 # === Local Chroma collections ===
 chroma_collections:
-  topic: "news_topic"
-  stance: "news_stance"
+  topic: "unstructured_topic"
+  stance: "unstructured_stance"
 
 # === Embedding models ===
 embeddings:
@@ -21,7 +21,7 @@ embeddings:
 
 # === Topic inference ===
 topics:
-  source: "https://raw.githubusercontent.com/AHMerrill/anti-echo-chamber/main/config/topics.json"
+  source: "https://raw.githubusercontent.com/AHMerrill/unstructured-project/main/config/topics.json"
   max_topics_per_article: 5
   similarity_threshold: 0.4
 
@@ -34,12 +34,12 @@ stance_processing:
     temperature: 0.4
     max_tokens: 256
     prompt_description: >
-      The model classifies each article’s political leaning, implied stance, 
+      The model classifies each document’s ideological leaning, implied stance,
       and summarizes its argument in one concise sentence.
   ideological_guidance:
-    political_leanings: "https://raw.githubusercontent.com/AHMerrill/anti-echo-chamber/main/config/political_leanings.json"
-    implied_stances: "https://raw.githubusercontent.com/AHMerrill/anti-echo-chamber/main/config/implied_stances.json"
-    source_bias: "https://raw.githubusercontent.com/AHMerrill/anti-echo-chamber/main/config/source_bias.json"
+    political_leanings: "https://raw.githubusercontent.com/AHMerrill/unstructured-project/main/config/political_leanings.json"
+    implied_stances: "https://raw.githubusercontent.com/AHMerrill/unstructured-project/main/config/implied_stances.json"
+    source_bias: "https://raw.githubusercontent.com/AHMerrill/unstructured-project/main/config/source_bias.json"
   hybrid_embedding:
     concatenate_order: ["political_leaning", "implied_stance", "summary"]
     max_length_chars: 4096
