@@ -9,7 +9,7 @@ This repository handles scraping, embedding, batching, and coordination for the 
 
 ### 1. Scraper and batch builder
 
-<a target="_blank" href="https://colab.research.google.com/github/AHMerrill/anti-echo-chamber/blob/main/scraper_artifacts.ipynb">
+<a target="_blank" href="https://colab.research.google.com/github/AHMerrill/unstructured-project/blob/main/scraper_artifacts.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
 </a>
 
@@ -19,7 +19,7 @@ _Run this notebook to scrape, embed, and publish new batches to the Hugging Face
 
 ### 2. Analysis and stance comparison
 
-<a target="_blank" href="https://colab.research.google.com/github/AHMerrill/anti-echo-chamber/blob/main/anti_echo_chamber.ipynb">
+<a target="_blank" href="https://colab.research.google.com/github/AHMerrill/unstructured-project/blob/main/anti_echo_chamber.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
 </a>
 
