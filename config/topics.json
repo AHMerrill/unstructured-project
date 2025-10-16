@@ -1,0 +1,68 @@
+{
+  "Politics / US / Federal / Elections and Campaigns": [
+    "elections", "campaign finance", "voting rights", "political advertising", "polling data", "presidential debates", "voter turnout", "redistricting", "swing states", "party primaries"
+  ],
+  "Politics / US / Federal / Judicial Branch": [
+    "supreme court", "judicial review", "constitutional law", "federal courts", "judicial appointments", "landmark cases", "legal precedent", "civil rights law", "judicial activism", "originalism"
+  ],
+  "Politics / US / Federal / Executive Policy": [
+    "executive orders", "foreign policy", "federal agencies", "budget proposals", "administrative law", "presidential power", "cabinet appointments", "veto authority", "bureaucracy", "governance"
+  ],
+  "Politics / Global / Geopolitics & Conflict": [
+    "international relations", "diplomacy", "foreign policy", "war", "military strategy", "alliances", "treaties", "united nations", "nato", "sanctions", "terrorism", "peace negotiations", "humanitarian intervention", "defense spending", "arms trade"
+  ],
+  "Law / Legal Systems / Justice": [
+    "criminal justice", "civil rights", "police reform", "constitutional law", "legal ethics", "human rights", "litigation", "due process", "supreme court decisions", "incarceration", "criminal defense", "prosecution", "evidence law", "legal precedent"
+  ],
+  "Economy / Finance / Markets": [
+    "stock market", "federal reserve", "interest rates", "inflation", "recession", "economic indicators", "market volatility", "monetary policy", "fiscal stimulus", "bond yields"
+  ],
+  "Economy / Labor / Employment": [
+    "unemployment", "minimum wage", "labor unions", "gig economy", "wage growth", "job creation", "automation", "worker rights", "income inequality", "labor force participation"
+  ],
+  "Economy / Trade / Globalization": [
+    "trade agreements", "tariffs", "import export", "global supply chains", "outsourcing", "protectionism", "foreign investment", "trade deficit", "NAFTA", "WTO"
+  ],
+  "Economy / Housing & Real Estate": [
+    "housing market", "mortgages", "rent prices", "property taxes", "affordable housing", "urban development", "construction industry", "homeownership", "real estate investment", "zoning laws"
+  ],
+  "Society / Culture & Identity / Social Issues": [
+    "gender equality", "racial justice", "lgbtq rights", "religious freedom", "immigration", "affirmative action", "social justice", "civil rights", "multiculturalism", "inclusion"
+  ],
+  "Society / Education / Academia": [
+    "universities", "curriculum", "student debt", "academic freedom", "public education", "standardized testing", "school funding", "teacher unions", "college admissions", "education policy"
+  ],
+  "Society / Media / Communication": [
+    "journalism", "social media", "misinformation", "freedom of press", "broadcast news", "internet culture", "censorship", "media literacy", "propaganda", "public opinion"
+  ],
+  "Technology / Innovation / AI": [
+    "artificial intelligence", "machine learning", "automation", "data privacy", "ethics of ai", "algorithmic bias", "robotics", "natural language processing", "open source", "tech regulation"
+  ],
+  "Technology / Industry / Infrastructure": [
+    "semiconductors", "telecommunications", "cloud computing", "cybersecurity", "digital infrastructure", "satellite technology", "5g networks", "software development", "internet of things", "data centers"
+  ],
+  "Technology / Social Media & Platforms": [
+    "platform regulation", "content moderation", "user privacy", "digital surveillance", "algorithmic transparency", "online misinformation", "social networking", "tech monopolies", "digital rights", "data collection", "influencer culture"
+  ],
+  "Environment / Climate / Energy Policy": [
+    "climate change", "carbon emissions", "renewable energy", "fossil fuels", "environmental regulation", "energy transition", "nuclear power", "carbon capture", "sustainability", "green technology"
+  ],
+  "Environment / Conservation / Wildlife": [
+    "biodiversity", "deforestation", "endangered species", "habitat protection", "marine conservation", "national parks", "reforestation", "ecology", "wildlife management", "conservation policy"
+  ],
+  "Environment / Disaster & Resilience": [
+    "natural disasters", "emergency response", "disaster relief", "climate adaptation", "infrastructure resilience", "wildfires", "hurricanes", "flood management", "environmental refugees", "crisis preparedness"
+  ],
+  "Science / Research / Medicine": [
+    "medical research", "public health", "pandemic response", "epidemiology", "vaccine development", "clinical trials", "scientific discovery", "peer review", "space exploration", "biotechnology", "genomics", "mental health", "disease prevention", "healthcare innovation"
+  ],
+  "Culture / Arts / Entertainment": [
+    "film industry", "literature", "music festivals", "visual arts", "theater", "celebrity culture", "pop culture", "creative expression", "art criticism", "museum exhibitions"
+  ],
+  "Sports / Global Athletics / Competitions": [
+    "olympics", "world cup", "athlete performance", "sports governance", "doping scandals", "sportsmanship", "international tournaments", "sports funding", "team rivalries", "youth sports"
+  ],
+  "Ethics / Governance & Accountability / Integrity": [
+    "corruption", "whistleblowers", "transparency", "public trust", "ethics reform", "campaign ethics", "conflicts of interest", "watchdog organizations", "oversight", "good governance"
+  ]
+}

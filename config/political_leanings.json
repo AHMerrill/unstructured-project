@@ -1,0 +1,155 @@
+{
+  "progressive left": {
+    "aliases": ["left", "liberal", "social democratic", "progressive"],
+    "core values": ["equality", "inclusion", "social justice", "redistribution", "collective welfare"],
+    "rhetorical markers": [
+      "systemic injustice", "marginalized voices", "fairness", "diversity", "equity", "the rich should pay their share"
+    ],
+    "policy frames": [
+      "government regulation is necessary to protect people and the planet",
+      "public spending and welfare programs reduce inequality",
+      "corporations and billionaires must be held accountable",
+      "collective action can solve climate and social crises"
+    ]
+  },
+
+  "center left": {
+    "aliases": ["moderate democrat", "pragmatic progressive", "centrist liberal"],
+    "core values": ["fair opportunity", "balanced markets", "inclusive capitalism"],
+    "rhetorical markers": [
+      "common sense reform", "bipartisan solutions", "shared prosperity", "middle class"
+    ],
+    "policy frames": [
+      "markets work when they are properly regulated",
+      "incremental reform is better than ideological extremes",
+      "government should act as a referee, not the sole player"
+    ]
+  },
+
+  "centrist": {
+    "aliases": ["moderate", "pragmatist", "nonpartisan"],
+    "core values": ["stability", "compromise", "governance competence"],
+    "rhetorical markers": [
+      "both sides", "reasonable", "balanced approach", "pragmatic policy"
+    ],
+    "policy frames": [
+      "political polarization is harmful",
+      "technocratic expertise should guide decisions",
+      "ideology should not override results"
+    ]
+  },
+
+  "center right": {
+    "aliases": ["moderate conservative", "fiscal conservative", "business friendly"],
+    "core values": ["personal responsibility", "economic efficiency", "limited government"],
+    "rhetorical markers": [
+      "taxpayer burden", "job creators", "red tape", "government waste"
+    ],
+    "policy frames": [
+      "free enterprise drives innovation and prosperity",
+      "regulation should be light and predictable",
+      "individual initiative should be rewarded"
+    ]
+  },
+
+  "conservative right": {
+    "aliases": ["right", "traditionalist", "national conservative"],
+    "core values": ["order", "tradition", "family values", "national sovereignty"],
+    "rhetorical markers": [
+      "radical left", "family under attack", "protect our borders", "restore traditional values"
+    ],
+    "policy frames": [
+      "cultural stability and moral order are essential to society",
+      "excessive government intervention erodes freedom",
+      "patriotism and faith are moral anchors"
+    ]
+  },
+
+  "libertarian": {
+    "aliases": ["classical liberal", "free market advocate"],
+    "core values": ["individual liberty", "free markets", "minimal state"],
+    "rhetorical markers": [
+      "government overreach", "nanny state", "freedom of choice", "personal responsibility"
+    ],
+    "policy frames": [
+      "voluntary exchange is superior to government control",
+      "economic and social freedom are inseparable",
+      "taxation and regulation infringe on liberty"
+    ]
+  },
+
+  "populist right": {
+    "aliases": ["nationalist", "anti elite", "america first", "sovereigntist"],
+    "core values": ["national pride", "anti globalism", "economic protectionism"],
+    "rhetorical markers": [
+      "elites betray ordinary people", "the establishment", "fake news", "globalists", "take our country back"
+    ],
+    "policy frames": [
+      "the political class ignores working people",
+      "foreign interests undermine national prosperity",
+      "media and bureaucracy conspire against ordinary citizens"
+    ]
+  },
+
+  "populist left": {
+    "aliases": ["democratic socialist", "anti corporate", "grassroots progressive"],
+    "core values": ["economic equality", "workers' rights", "anti elite solidarity"],
+    "rhetorical markers": [
+      "corporate greed", "billionaires' influence", "grassroots movement", "fight for workers"
+    ],
+    "policy frames": [
+      "the elite few hoard wealth at the expense of the many",
+      "economic democracy is essential for justice",
+      "capitalism must be fundamentally restructured"
+    ]
+  },
+
+  "green": {
+    "aliases": ["environmentalist", "eco progressive"],
+    "core values": ["sustainability", "planetary stewardship", "ecological justice"],
+    "rhetorical markers": [
+      "climate emergency", "renewable future", "carbon neutrality", "biodiversity crisis"
+    ],
+    "policy frames": [
+      "climate change requires systemic transformation",
+      "economic growth must be redefined to respect planetary limits",
+      "green technology and collective responsibility are moral imperatives"
+    ]
+  },
+
+  "authoritarian right": {
+    "aliases": ["law and order", "strongman", "national security state"],
+    "core values": ["authority", "discipline", "security", "hierarchy"],
+    "rhetorical markers": [
+      "crack down", "restore order", "zero tolerance", "tough on crime"
+    ],
+    "policy frames": [
+      "freedom must yield to security and order",
+      "strong leadership prevents chaos",
+      "dissent undermines unity"
+    ]
+  },
+
+  "authoritarian left": {
+    "aliases": ["collectivist", "state socialist"],
+    "core values": ["collective equality", "state planning", "redistribution"],
+    "rhetorical markers": [
+      "redistribute wealth", "state control", "command economy", "people's movement"
+    ],
+    "policy frames": [
+      "the state must direct economic and social life for equality",
+      "central coordination prevents exploitation",
+      "individual interests are subordinate to collective welfare"
+    ]
+  },
+
+  "apolitical or unknown": {
+    "aliases": ["neutral", "mixed", "unclear", "nonpolitical"],
+    "core values": [],
+    "rhetorical markers": [],
+    "policy frames": [
+      "no explicit ideological stance detected",
+      "language focuses on facts or events without moral framing"
+    ]
+  }
+}

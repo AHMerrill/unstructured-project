@@ -1,0 +1,90 @@
+# === anti-echo-chamber project config (v6: SentenceTransformer + GPT hybrid stance system) ===
+version: 6
+
+# === Hugging Face dataset for artifact storage ===
+hf_dataset_id: "zanimal/anti-echo-artifacts"
+
+# === Local Chroma collections ===
+chroma_collections:
+  topic: "news_topic"
+  stance: "news_stance"
+
+# === Embedding models ===
+embeddings:
+  topic_model: "intfloat/e5-base-v2"                 # strong topic model (dense retrieval)
+  stance_model: "all-mpnet-base-v2"                  # compact semantic stance encoder
+  dim: 768                                           # embedding dimensionality for both
+  dtype: "float32"                                   # precision for SentenceTransformer
+  pooling: "mean"
+  chunk_tokens: 512
+  normalize: true
+
+# === Topic inference ===
+topics:
+  source: "https://raw.githubusercontent.com/AHMerrill/anti-echo-chamber/main/config/topics.json"
+  max_topics_per_article: 5
+  similarity_threshold: 0.4
+
+# === Stance inference pipeline (LLM + Embedding hybrid) ===
+stance_processing:
+  mode: "llm-classification"                         # OpenAI GPT for classification, local embed
+  llm:
+    provider: "openai"
+    model: "gpt-4o-mini"
+    temperature: 0.4
+    max_tokens: 256
+    prompt_description: >
+      The model classifies each article’s political leaning, implied stance, 
+      and summarizes its argument in one concise sentence.
+  ideological_guidance:
+    political_leanings: "https://raw.githubusercontent.com/AHMerrill/anti-echo-chamber/main/config/political_leanings.json"
+    implied_stances: "https://raw.githubusercontent.com/AHMerrill/anti-echo-chamber/main/config/implied_stances.json"
+    source_bias: "https://raw.githubusercontent.com/AHMerrill/anti-echo-chamber/main/config/source_bias.json"
+  hybrid_embedding:
+    concatenate_order: ["political_leaning", "implied_stance", "summary"]
+    max_length_chars: 4096
+    description: >
+      Concatenates ideological classification and one-sentence summary into 
+      a unified text block for stance embeddings. Captures worldview, tone, 
+      and rhetorical framing for cosine retrieval.
+
+# === Batch artifact management ===
+batch:
+  base_dir: "batches"
+  manifest_name: "manifest.json"
+  topic_file: "embeddings_topic.npz"
+  stance_file: "embeddings_stance.npz"
+  metadata_file: "metadata.jsonl"
+  compress: true
+  dtype: "float32"
+  hf_push: true
+
+# === Identifier and hashing scheme ===
+ids:
+  scheme: "domain-slug-sha12"
+  hash: "sha256"
+  normalize_whitespace: true
+  lowercase: true
+  include_timestamp: true
+
+# === Chroma persistence and similarity metric ===
+chroma:
+  dir: "chroma_db"
+  distance_metric: "cosine"
+  rebuild_if_missing: true
+
+# === Logging, diagnostics, and recovery ===
+logging:
+  level: "INFO"
+  save_dir: "logs"
+  record_failures: true
+  checkpoint_interval: 100
+
+# === Diagnostics and validation ===
+diagnostics:
+  validate_embeddings: true
+  sample_summary_preview: true
+  max_preview_chars: 500
+  verify_stance_variants: false                     # single stance embedding per article (GPT)
+  check_json_integrity: true
+  verify_dual_model: false

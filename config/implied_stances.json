@@ -1,0 +1,304 @@
+{
+  "economy": {
+    "families": {
+      "pro market": {
+        "summary": "Markets allocate resources efficiently; government should minimize interference.",
+        "examples": [
+          "free trade and deregulation promote growth",
+          "tax cuts encourage innovation and job creation",
+          "entrepreneurship and competition solve social problems",
+          "government spending crowds out private investment"
+        ],
+        "counterpositions": [
+          "unregulated markets create inequality and instability",
+          "public spending is essential for equity and opportunity"
+        ]
+      },
+      "pro regulation": {
+        "summary": "Markets require oversight to prevent abuse, ensure fairness, and protect the public.",
+        "examples": [
+          "corporate greed requires stronger oversight",
+          "labor rights must be protected through government standards",
+          "economic justice depends on redistribution and progressive taxation",
+          "unchecked capitalism leads to exploitation"
+        ],
+        "counterpositions": [
+          "regulations stifle innovation and burden businesses"
+        ]
+      },
+      "austerity": {
+        "summary": "Fiscal discipline and limited public spending are necessary for stability and responsibility.",
+        "examples": [
+          "governments must balance budgets to avoid debt crises",
+          "entitlement spending is unsustainable",
+          "deficits harm future generations"
+        ],
+        "counterpositions": [
+          "deficit spending is justified for social investment or economic recovery"
+        ]
+      },
+      "redistributive": {
+        "summary": "Economic inequality is a structural problem requiring redistribution of wealth and opportunity.",
+        "examples": [
+          "wealth taxes and higher top rates are moral imperatives",
+          "public housing and universal healthcare reduce systemic inequality",
+          "corporations exploit labor and should be reined in"
+        ],
+        "counterpositions": [
+          "wealth redistribution punishes success and discourages innovation"
+        ]
+      }
+    }
+  },
+
+  "governance": {
+    "families": {
+      "democratic institutionalism": {
+        "summary": "Stable liberal institutions and rule of law are essential for democracy.",
+        "examples": [
+          "checks and balances prevent authoritarianism",
+          "courts must remain independent",
+          "media freedom is vital for accountability",
+          "civic education strengthens democracy"
+        ],
+        "counterpositions": [
+          "unelected institutions overrule the popular will",
+          "strong leaders should override bureaucracy for efficiency"
+        ]
+      },
+      "anti elite populism": {
+        "summary": "The people’s will is betrayed by self-interested elites, bureaucrats, or technocrats.",
+        "examples": [
+          "globalist elites control policy against ordinary citizens",
+          "the establishment ignores working-class interests",
+          "experts and bureaucrats lack accountability"
+        ],
+        "counterpositions": [
+          "expertise and institutions protect against mob rule and misinformation"
+        ]
+      },
+      "technocratic pragmatism": {
+        "summary": "Policy should be evidence-based, pragmatic, and non-ideological.",
+        "examples": [
+          "effective governance matters more than ideology",
+          "data-driven reform yields real-world results",
+          "experts should guide public decisions"
+        ],
+        "counterpositions": [
+          "technocracy is unaccountable and detached from democratic legitimacy"
+        ]
+      }
+    }
+  },
+
+  "environment and climate": {
+    "families": {
+      "climate urgency": {
+        "summary": "The climate crisis is an existential threat requiring immediate collective action.",
+        "examples": [
+          "carbon neutrality is a moral imperative",
+          "fossil fuel phaseout must happen within decades",
+          "climate justice intersects with racial and economic justice",
+          "denial or delay equals catastrophe"
+        ],
+        "counterpositions": [
+          "climate alarmism exaggerates risk and stifles development"
+        ]
+      },
+      "market environmentalism": {
+        "summary": "Innovation, technology, and markets—not regulation—will solve environmental problems.",
+        "examples": [
+          "private sector innovation can decarbonize faster than bureaucracy",
+          "green capitalism aligns profit with sustainability",
+          "government regulation lags behind market solutions"
+        ],
+        "counterpositions": [
+          "profit-driven motives cannot solve collective ecological crises"
+        ]
+      },
+      "climate skepticism": {
+        "summary": "Climate science is politicized or overstated, and costly interventions harm economic vitality.",
+        "examples": [
+          "climate hysteria threatens jobs and freedom",
+          "warming trends are natural and manageable",
+          "green policies enrich elites and burden citizens"
+        ],
+        "counterpositions": [
+          "scientific consensus supports urgent global climate action"
+        ]
+      }
+    }
+  },
+
+  "foreign policy": {
+    "families": {
+      "internationalist": {
+        "summary": "Global cooperation, alliances, and diplomacy ensure peace and stability.",
+        "examples": [
+          "NATO and the UN uphold democratic norms",
+          "multilateral treaties prevent conflict",
+          "diplomacy is more effective than military escalation"
+        ],
+        "counterpositions": [
+          "international institutions constrain national sovereignty"
+        ]
+      },
+      "nationalist realist": {
+        "summary": "Foreign policy should prioritize national interest, strength, and sovereignty.",
+        "examples": [
+          "America first policies restore independence",
+          "alliances must serve domestic prosperity",
+          "foreign wars drain national resources"
+        ],
+        "counterpositions": [
+          "isolationism weakens collective security and moral leadership"
+        ]
+      },
+      "humanitarian interventionist": {
+        "summary": "Democracies have a moral duty to intervene abroad to stop atrocities or defend freedom.",
+        "examples": [
+          "western intervention is necessary to prevent genocide",
+          "military deterrence preserves human rights"
+        ],
+        "counterpositions": [
+          "foreign interventions often worsen instability and imperialism"
+        ]
+      }
+    }
+  },
+
+  "social and cultural": {
+    "families": {
+      "social justice": {
+        "summary": "Inequality based on race, gender, or identity must be corrected through systemic reform.",
+        "examples": [
+          "patriarchy and racism remain embedded in institutions",
+          "representation in media and leadership matters",
+          "language and framing perpetuate bias"
+        ],
+        "counterpositions": [
+          "identity politics divides society and undermines merit"
+        ]
+      },
+      "traditionalism": {
+        "summary": "Cultural continuity and family values are the foundation of a moral society.",
+        "examples": [
+          "religious freedom is under attack",
+          "family and faith are moral anchors",
+          "social change erodes moral order"
+        ],
+        "counterpositions": [
+          "rigid traditionalism marginalizes minorities and modern realities"
+        ]
+      },
+      "free expression": {
+        "summary": "Open discourse and viewpoint diversity outweigh emotional or ideological protection.",
+        "examples": [
+          "cancel culture threatens democracy",
+          "offensive speech must be tolerated for liberty",
+          "truth emerges from open debate"
+        ],
+        "counterpositions": [
+          "unchecked speech enables harm, hate, and misinformation"
+        ]
+      },
+      "moral progressivism": {
+        "summary": "Social norms must evolve toward inclusivity, equality, and pluralism.",
+        "examples": [
+          "LGBTQ+ rights are non-negotiable",
+          "tradition should yield to fairness and empathy",
+          "progress requires reexamining privilege"
+        ],
+        "counterpositions": [
+          "rapid social change destabilizes identity and order"
+        ]
+      }
+    }
+  },
+
+  "technology and information": {
+    "families": {
+      "techno optimist": {
+        "summary": "Technology improves life, expands freedom, and enables progress.",
+        "examples": [
+          "AI and innovation will solve global challenges",
+          "digital freedom empowers individuals",
+          "regulation stifles innovation"
+        ],
+        "counterpositions": [
+          "unregulated technology amplifies inequality and misinformation"
+        ]
+      },
+      "techno skeptic": {
+        "summary": "Technology accelerates inequality, manipulation, and loss of human control.",
+        "examples": [
+          "AI threatens jobs and democracy",
+          "big tech monopolies distort information and politics",
+          "digital surveillance undermines privacy"
+        ],
+        "counterpositions": [
+          "innovation and open competition ultimately self-correct abuses"
+        ]
+      },
+      "information control": {
+        "summary": "Misinformation must be managed through regulation and authoritative sources.",
+        "examples": [
+          "platforms should remove harmful content",
+          "fact-checking protects democracy",
+          "algorithms must promote credible journalism"
+        ],
+        "counterpositions": [
+          "speech policing enables censorship and partisan manipulation"
+        ]
+      }
+    }
+  },
+
+  "governance meta": {
+    "families": {
+      "anti corruption": {
+        "summary": "Accountability and transparency are moral imperatives for governance.",
+        "examples": [
+          "expose conflicts of interest",
+          "end dark money in politics",
+          "whistleblowers defend democracy"
+        ],
+        "counterpositions": [
+          "anti corruption rhetoric can be weaponized for partisanship"
+        ]
+      },
+      "authoritarian approval": {
+        "summary": "Strong leaders bring stability and unity even at the expense of liberal norms.",
+        "examples": [
+          "democracies need decisive leadership",
+          "order matters more than debate",
+          "too much freedom leads to chaos"
+        ],
+        "counterpositions": [
+          "unchecked power breeds abuse and corruption"
+        ]
+      }
+    }
+  },
+
+  "meta": {
+    "families": {
+      "non advocacy": {
+        "summary": "The article is primarily descriptive or informative, not argumentative.",
+        "examples": [
+          "neutral reporting of events without evaluative language",
+          "focus on what happened, not why or whether it was right",
+          "no identifiable stance, ideology, or emotional tone"
+        ]
+      },
+      "mixed signals": {
+        "summary": "Tone or argument is internally inconsistent or unclear.",
+        "examples": [
+          "praises and criticizes multiple sides equally",
+          "uses emotionally charged language without clear direction",
+          "satirical or ironic framing blurs position"
+        ]
+      }
+    }
+  }
+}
