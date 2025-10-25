@@ -1,5 +1,5 @@
-# === unstructured-project config (v2: SentenceTransformer + OpenAI hybrid stance + topic enrichment) ===
-version: 2
+# === unstructured-project config (v2.1: Hybrid Topic + GPT Context Enrichment) ===
+version: 2.1
 
 # === Hugging Face dataset for artifact storage ===
 hf_dataset_id: "zanimal/unstructured-project"
@@ -25,21 +25,22 @@ embeddings:
   chunk_tokens: 512
   normalize: true
 
-# === Topic inference ===
+# === Topic inference (Anchor + OpenAI Hybrid) ===
 topics:
   source: "https://raw.githubusercontent.com/AHMerrill/unstructured-project/main/config/topics.json"
   max_topics_per_article: 5
   similarity_threshold: 0.4
 
-  # --- OpenAI enrichment settings (used in Setup 8) ---
-  use_openai_enrichment: true                        # turn ON to add GPT-based topic summaries
-  openai_model: "gpt-4o-mini"                        # model for enrichment
-  openai_field: "openai_topic_summary"               # metadata field for generated summary
-  openai_temperature: 0.4                            # sampling temp for short summaries
-  openai_max_tokens: 64                              # small, sentence-level output
+  # --- OpenAI contextual topic layer (identical behavior to anti-echo v7) ---
+  use_openai_enrichment: true                        # enable GPT topic summaries
+  openai_model: "gpt-4o-mini"                        # model for topic summaries
+  openai_field: "openai_topic_summary"               # metadata field name
+  openai_temperature: 0.4
+  openai_max_tokens: 64
   openai_prompt: >
-    Write one concise sentence that best summarizes the central topic of the article.
-    Focus on what it is primarily about, not on its tone or bias.
+    Summarize the main subject matter of this article in one sentence.
+    Do not include opinions or stances — only describe what it is about.
+    Example: "The article discusses the 2025 Gaza conflict between Israel and Hamas, diplomatic decisions, and aftermath."
 
 # === Stance inference pipeline (LLM + Embedding hybrid) ===
 stance_processing:
@@ -50,7 +51,7 @@ stance_processing:
     temperature: 0.4
     max_tokens: 256
     prompt_description: >
-      The model classifies each document’s ideological leaning, implied stance,
+      The model classifies each article’s political leaning, implied stance, 
       and summarizes its argument in one concise sentence.
   ideological_guidance:
     political_leanings: "https://raw.githubusercontent.com/AHMerrill/unstructured-project/main/config/political_leanings.json"
