@@ -2,6 +2,33 @@
   "registry_version": "1.0",
   "description": "Artifact registry for unstructured-project embeddings and metadata.",
   "last_updated": null,
-  "batches": [],
-  "version": 1
+  "batches": [
+    {
+      "schema_version": 2,
+      "batch_id": "batch_20251025T173713Z_5dd9b9dd",
+      "created_at": "20251025T173713Z",
+      "models": {
+        "topic_model": "intfloat/e5-base-v2",
+        "stance_model": "all-mpnet-base-v2",
+        "dim": 768,
+        "dtype": "float32",
+        "pooling": "mean",
+        "chunk_tokens": 512,
+        "normalize": true
+      },
+      "counts": {
+        "topic": 64,
+        "stance": 13
+      },
+      "hf_dataset_id": "zanimal/unstructured-project",
+      "paths": {
+        "embeddings_topic": "batches/batch_20251025T173713Z_5dd9b9dd/embeddings_topic.npz",
+        "embeddings_stance": "batches/batch_20251025T173713Z_5dd9b9dd/embeddings_stance.npz",
+        "metadata_topic": "batches/batch_20251025T173713Z_5dd9b9dd/metadata_topic.jsonl",
+        "metadata_stance": "batches/batch_20251025T173713Z_5dd9b9dd/metadata_stance.jsonl",
+        "manifest": "batches/batch_20251025T173713Z_5dd9b9dd/manifest.json"
+      }
+    }
+  ],
+  "version": 2
 }
