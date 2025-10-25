@@ -1,5 +1,5 @@
-# === unstructured-project config (v1: SentenceTransformer + GPT hybrid stance system) ===
-version: 1
+# === unstructured-project config (v2: SentenceTransformer + OpenAI hybrid stance + topic enrichment) ===
+version: 2
 
 # === Hugging Face dataset for artifact storage ===
 hf_dataset_id: "zanimal/unstructured-project"
@@ -30,6 +30,16 @@ topics:
   source: "https://raw.githubusercontent.com/AHMerrill/unstructured-project/main/config/topics.json"
   max_topics_per_article: 5
   similarity_threshold: 0.4
+
+  # --- OpenAI enrichment settings (used in Setup 8) ---
+  use_openai_enrichment: true                        # turn ON to add GPT-based topic summaries
+  openai_model: "gpt-4o-mini"                        # model for enrichment
+  openai_field: "openai_topic_summary"               # metadata field for generated summary
+  openai_temperature: 0.4                            # sampling temp for short summaries
+  openai_max_tokens: 64                              # small, sentence-level output
+  openai_prompt: >
+    Write one concise sentence that best summarizes the central topic of the article.
+    Focus on what it is primarily about, not on its tone or bias.
 
 # === Stance inference pipeline (LLM + Embedding hybrid) ===
 stance_processing:
