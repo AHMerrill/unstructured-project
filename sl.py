@@ -1,5 +1,5 @@
 # ================================================================
-# z_sl.py — Anti-Echo Chamber Streamlit Application
+# sl.py — Anti-Echo Chamber Streamlit Application
 # ================================================================
 # Matches functionality of anti_echo_chamber.ipynb
 # This app compares a user-uploaded article to a curated corpus
