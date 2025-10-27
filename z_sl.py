@@ -629,29 +629,11 @@ if uploaded:
     status_text.text("Step 5/6: Searching database for similar articles...")
     progress_bar.progress(75)
     
-    with st.spinner("Searching database..."):
-        # Database has 768-dim embeddings, query with just the base topic embedding
-        if len(topic_vec) == 1536:
-            query_vec = topic_vec[:768]
-        else:
-            query_vec = topic_vec
-        
-        assert len(query_vec) == 768, f"Query vector must be 768 dim, got {len(query_vec)}"
-        
-        # Get top candidates using similarity search
-        search_results = topic_coll.query(
-            query_embeddings=[query_vec.tolist()],
-            n_results=min(100, topic_coll.count()),
-            include=["embeddings", "metadatas"]
-        )
-        
-        if not search_results["ids"] or not search_results["ids"][0]:
-            st.error("No matching articles found in database.")
-            st.stop()
-        
-        candidate_indices = search_results["ids"][0]
-        candidate_embeddings = search_results["embeddings"][0]
-        candidate_metadatas = search_results["metadatas"][0]
+    with st.spinner("Retrieving all topic documents..."):
+        # Like notebook line 2365: get ALL topic docs (not query)
+        topic_docs = topic_coll.get(include=["embeddings", "metadatas"])
+        candidate_embeddings = topic_docs["embeddings"]
+        candidate_metadatas = topic_docs["metadatas"]
 
     # Get all stance docs for matching
     stance_docs = stance_coll.get(include=["embeddings", "metadatas"])
@@ -673,7 +655,7 @@ if uploaded:
     # Extract uploaded summary vector
     uploaded_summary = topic_vec[768:] if len(topic_vec) == 1536 else topic_vec
     
-    st.write(f"Debug: Checking {len(candidate_embeddings)} candidates...")
+    st.caption(f"Checking {len(candidate_embeddings)} topic vectors from database...")
     passed_summary = 0
     passed_topic = 0
     
@@ -802,7 +784,7 @@ if uploaded:
             "url": md.get("url", "")
         })
 
-    st.write(f"Debug: {passed_summary} passed summary threshold, {passed_topic} passed topic threshold, {len(all_matches)} total matches")
+    st.caption(f"✓ {passed_summary} passed summary threshold ≥ {SUMMARY_SIMILARITY_THRESHOLD}, {passed_topic} passed topic threshold ≥ {CANONICAL_TOPIC_THRESHOLD}, {len(all_matches)} final matches")
 
     progress_bar.progress(100)
     status_text.text("✓ Analysis complete!")
