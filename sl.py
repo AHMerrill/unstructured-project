@@ -749,8 +749,6 @@ if uploaded:
     status_text.text("Step 6/6: Calculating anti-echo scores...")
     progress_bar.progress(85)
 
-    # We now extract canonical topics via hierarchical clustering + anchor matching
-
     # Constants from notebook
     CANONICAL_TOPIC_THRESHOLD = 0.3  # Must have 30% canonical topic overlap
     SUMMARY_SIMILARITY_THRESHOLD = 0.8  # Must have 80% summary similarity
@@ -764,34 +762,33 @@ if uploaded:
     if uploaded_summary_vec.ndim == 2:
         uploaded_summary_vec = uploaded_summary_vec.flatten()
     
-    # Pre-encode ALL unique candidate summaries ONCE (avoid re-encoding in loop)
-    st.caption(f"Pre-encoding candidate summaries...")
-    unique_summaries = list(set(md.get("openai_topic_summary", "") for md in candidate_metadatas if md.get("openai_topic_summary")))
-    encoded_summaries_cache = {}
-    if unique_summaries:
-        with st.spinner(f"Encoding {len(unique_summaries)} unique summaries..."):
-            batch_vecs = topic_model.encode(unique_summaries, normalize_embeddings=True, show_progress_bar=True)
-            for summ, vec in zip(unique_summaries, batch_vecs):
-                if vec.ndim == 2:
-                    vec = vec.flatten()
-                encoded_summaries_cache[summ] = vec
-    st.caption(f"Checking {len(candidate_embeddings)} topic vectors from database...")
+    # GROUP VECTORS BY ARTICLE ID (like notebook should do)
+    st.caption(f"Grouping {len(candidate_embeddings)} vectors by article...")
+    articles_grouped = {}
+    for emb, md in zip(candidate_embeddings, candidate_metadatas):
+        article_id = md.get("id", "").split("::topic::")[0]
+        if article_id not in articles_grouped:
+            articles_grouped[article_id] = {"vectors": [], "metadatas": [], "base_meta": md}
+        articles_grouped[article_id]["vectors"].append(np.array(emb))
+        articles_grouped[article_id]["metadatas"].append(md)
+    
+    st.caption(f"Checking {len(articles_grouped)} unique articles from database...")
     passed_summary = 0
     passed_topic = 0
     
     # Show sample of what we're comparing
     st.caption(f"Uploaded topic shape: {topic_vec.shape}")
-    st.caption(f"Total candidates: {len(candidate_embeddings)}")
     
     progress_bar_search = st.progress(0)
-    total_candidates = len(candidate_embeddings)
+    total_candidates = len(articles_grouped)
     
-    for i, (emb, md) in enumerate(zip(candidate_embeddings, candidate_metadatas)):
+    for idx, (article_id, article_data) in enumerate(articles_grouped.items()):
         # Update progress every 50 items
-        if i % 50 == 0:
-            progress_bar_search.progress(i / total_candidates)
-        # NOTEBOOK ORDER: canonical overlap FIRST (line 2394)
-        # Calculate canonical topic overlap using Jaccard similarity (same as notebook)
+        if idx % 50 == 0:
+            progress_bar_search.progress(idx / total_candidates)
+        
+        md = article_data["base_meta"]  # Use first metadata as representative
+        # CANONICAL TOPIC OVERLAP (same as notebook)
         def parse_topics(obj):
             if obj is None:
                 return []
@@ -839,31 +836,26 @@ if uploaded:
             continue
         passed_topic += 1
         
-        # NOTEBOOK ORDER: summary similarity SECOND (match notebook line 2398-2411)
-        emb_array = np.array(emb)
+        # SUMMARY SIMILARITY: Find best vector to use for this article
+        # Check if article has OpenAI summary vector (topic_source == "openai_summary")
+        openai_vec = None
+        for vec, vec_md in zip(article_data["vectors"], article_data["metadatas"]):
+            if vec_md.get("topic_source") == "openai_summary":
+                openai_vec = vec
+                break
         
-        # Match notebook logic exactly (lines 2371-2383)
-        # --- Handle both 768 (scraper) and 1536 (future) formats ---
-        if len(emb_array) == 1536:
-            candidate_summary_vec = emb_array[768:]
-            summary_similarity = cosine_similarity(uploaded_summary_vec.reshape(1,-1), candidate_summary_vec.reshape(1,-1))[0][0]
-            old_summary = "(new format)"
+        if openai_vec is not None:
+            # Use the pre-encoded OpenAI summary vector directly
+            summary_similarity = cosine_similarity(
+                uploaded_summary_vec.reshape(1,-1), 
+                openai_vec.reshape(1,-1)
+            )[0][0]
         else:
-            # Check if THIS vector IS the OpenAI summary (already encoded by scraper)
-            if md.get("topic_source") == "openai_summary":
-                # Use the vector directly - it's already the encoded summary!
-                candidate_summary_vec = emb_array
-                summary_similarity = cosine_similarity(uploaded_summary_vec.reshape(1,-1), candidate_summary_vec.reshape(1,-1))[0][0]
-                old_summary = "(openai_summary_vector)"
-            else:
-                # This is a base topic vector, check for summary text in metadata
-                old_summary = md.get("openai_topic_summary", "")
-                if old_summary and old_summary in encoded_summaries_cache:
-                    candidate_summary_vec = encoded_summaries_cache[old_summary]
-                    summary_similarity = cosine_similarity(uploaded_summary_vec.reshape(1,-1), candidate_summary_vec.reshape(1,-1))[0][0]
-                else:
-                    # Fallback: compare base topic vectors
-                    summary_similarity = cosine_similarity(topic_vec.reshape(1,-1), emb_array.reshape(1,-1))[0][0]
+            # Fallback: use first base topic vector
+            summary_similarity = cosine_similarity(
+                uploaded_summary_vec.reshape(1,-1), 
+                article_data["vectors"][0].reshape(1,-1)
+            )[0][0]
 
         
         # FILTER: Check summary similarity threshold (notebook line 2411)
@@ -986,7 +978,22 @@ if uploaded:
     st.markdown("---")
     st.subheader("📰 Results by Category")
     
-    # SECTION 1: Same Topic — Different Source Bias
+    # SECTION 1: Top Anti-Echo Candidates (MOVED TO TOP)
+    st.subheader("🏆 Top Anti-Echo Candidates (Best Overall Matches)")
+    st.markdown("*Articles that best balance topic similarity with ideological diversity*")
+    
+    top_candidates = df.head(3)
+    
+    for idx, (_, row) in enumerate(top_candidates.iterrows(), 1):
+        st.markdown(f"### {idx}. [{row['title']}]({row['url'] if row.get('url') else '#'})")
+        bias_label = interpret_bias(row['bias_score'])
+        tone_emoji = "📰" if abs(row['bias_score']) > 0.2 else "📰"
+        st.markdown(f"**Source:** {row['source']} | **Source Bias:** {bias_label} (score: {row['bias_score']:.2f}) {tone_emoji}")
+        st.markdown(f"**Anti-Echo Score:** {row['anti_echo_score']:.3f} | **Bias Diff:** {row['bias_diff']:.2f} | **Summary Sim:** {row['summary_similarity']:.3f} | **Stance Sim:** {row['stance_similarity']:.3f}")
+    
+    st.markdown("---")
+    
+    # SECTION 2: Same Topic — Different Source Bias
     st.subheader("📰 Same Topic — Different Source Bias")
     st.markdown("*Articles covering the same topic but with different ideological perspectives*")
     
@@ -1005,7 +1012,7 @@ if uploaded:
     
     st.markdown("---")
     
-    # SECTION 2: Same Topic — Opposite Stance  
+    # SECTION 3: Same Topic — Opposite Stance  
     st.subheader("📝 Same Topic — Opposite Stance")
     st.markdown("*Articles covering the same topic but with opposing political stances*")
     
@@ -1024,21 +1031,6 @@ if uploaded:
             st.markdown(f"**Anti-Echo Score:** {row['anti_echo_score']:.3f} | **Stance Similarity:** {row['stance_similarity']:.3f} | **Summary Similarity:** {row['summary_similarity']:.3f}")
     else:
         st.info("No articles found with opposing stances.")
-    
-    st.markdown("---")
-    
-    # SECTION 3: Top Anti-Echo Candidates
-    st.subheader("🏆 Top Anti-Echo Candidates (Best Overall Matches)")
-    st.markdown("*Articles that best balance topic similarity with ideological diversity*")
-    
-    top_candidates = df.head(3)
-    
-    for idx, (_, row) in enumerate(top_candidates.iterrows(), 1):
-        st.markdown(f"### {idx}. [{row['title']}]({row['url'] if row.get('url') else '#'})")
-        bias_label = interpret_bias(row['bias_score'])
-        tone_emoji = "📰" if abs(row['bias_score']) > 0.2 else "📰"
-        st.markdown(f"**Source:** {row['source']} | **Source Bias:** {bias_label} (score: {row['bias_score']:.2f}) {tone_emoji}")
-        st.markdown(f"**Anti-Echo Score:** {row['anti_echo_score']:.3f} | **Bias Diff:** {row['bias_diff']:.2f} | **Summary Sim:** {row['summary_similarity']:.3f} | **Stance Sim:** {row['stance_similarity']:.3f}")
     
     st.markdown("---")
     st.subheader("📊 All Results (Full Dataset)")
