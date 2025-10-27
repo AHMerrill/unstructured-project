@@ -694,6 +694,11 @@ if uploaded:
     # Load the topic summary text (stored in Stage 5a)
     uploaded_summary_text = topic_summary  # This is the GPT-generated summary text
     
+    # Pre-encode the uploaded summary ONCE to avoid re-encoding in the loop
+    uploaded_summary_vec = topic_model.encode(uploaded_summary_text, normalize_embeddings=True, show_progress_bar=False)
+    if uploaded_summary_vec.ndim == 2:
+        uploaded_summary_vec = uploaded_summary_vec.flatten()
+    
     st.caption(f"Checking {len(candidate_embeddings)} topic vectors from database...")
     passed_summary = 0
     passed_topic = 0
@@ -763,13 +768,10 @@ if uploaded:
         # For 768-dim vectors: encode the old summary text if available
         old_summary = md.get("openai_topic_summary", "")
         if old_summary:
-            # Encode both summaries and compare (like notebook)
+            # Encode candidate summary and compare with pre-encoded uploaded summary
             candidate_summary_vec = topic_model.encode(old_summary, normalize_embeddings=True, show_progress_bar=False)
-            uploaded_summary_vec = topic_model.encode(uploaded_summary_text, normalize_embeddings=True, show_progress_bar=False)
             if candidate_summary_vec.ndim == 2:
                 candidate_summary_vec = candidate_summary_vec.flatten()
-            if uploaded_summary_vec.ndim == 2:
-                uploaded_summary_vec = uploaded_summary_vec.flatten()
             summary_similarity = float(
                 cosine_similarity(
                     uploaded_summary_vec.reshape(1, -1),
