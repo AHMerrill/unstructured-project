@@ -457,7 +457,7 @@ def infer_bias_from_text(text, source_name, client):
     return 0.0  # Neutral fallback
 
 def infer_stance_classification(text, source_name, client):
-    """Generate stance classification text for embedding"""
+    """Generate stance classification text for embedding. Returns (stance_text, stance_data)"""
     try:
         prompt = f"""You are a political analyst. Based on the article below, classify its overall political leaning (tone) and implied stance.
 
@@ -482,14 +482,28 @@ def infer_stance_classification(text, source_name, client):
         
         raw = response.choices[0].message.content.strip()
         try:
-            stance_data = json.loads(raw)
+            # Try to parse as JSON, handling code blocks
+            cleaned = raw.strip('```json').strip('```').strip()
+            stance_data = json.loads(cleaned)
             # Combine fields for embedding
             stance_text = f"{stance_data.get('political_leaning', 'unknown')}\n{stance_data.get('implied_stance', 'unknown')}\n{stance_data.get('summary', raw)}"
-            return stance_text
+            return stance_text, stance_data
         except:
-            return raw  # Fallback to raw text
+            import re
+            # Fallback: extract with regex
+            leaning = re.search(r'"political_leaning":\s*"(.+?)"', raw, re.I)
+            stance = re.search(r'"implied_stance":\s*"(.+?)"', raw, re.I)
+            summary = re.search(r'"summary":\s*"(.+?)"', raw, re.I)
+            stance_data_fallback = {
+                "political_leaning": (leaning.group(1) if leaning else "unknown"),
+                "implied_stance": (stance.group(1) if stance else "unknown"),
+                "summary": (summary.group(1) if summary else raw[:200])
+            }
+            stance_text = f"{stance_data_fallback['political_leaning']}\n{stance_data_fallback['implied_stance']}\n{stance_data_fallback['summary']}"
+            return stance_text, stance_data_fallback
     except:
-        return "unknown\nunknown\nNo summary available"
+        fallback_data = {"political_leaning": "unknown", "implied_stance": "unknown", "summary": "No summary available"}
+        return "unknown\nunknown\nNo summary available", fallback_data
 
 def topic_overlap_simple(upload_topics, candidate_topics):
     """Calculate Jaccard similarity between topic lists"""
@@ -621,18 +635,14 @@ if uploaded:
         topic_vec = np.concatenate([topic_vec_base, topic_summary_vec])
         
         # Generate stance classification with GPT
-        stance_classification = infer_stance_classification(text, st.session_state.source_confirmed, openai_client)
+        stance_text, stance_data = infer_stance_classification(text, st.session_state.source_confirmed, openai_client)
         
-        # Parse and display stance metadata (like notebook Stage 5b)
-        stance_lines = stance_classification.split('\n')
+        # Display stance metadata (like notebook Stage 5b output)
         st.markdown("**Stance Classification:**")
-        if len(stance_lines) >= 3:
-            st.markdown(f"- Political Leaning: {stance_lines[0]}")
-            st.markdown(f"- Implied Stance: {stance_lines[1]}")
-            st.markdown(f"- Summary: {stance_lines[2]}")
+        st.json(stance_data)
         
         # Embed the stance classification
-        stance_vec = encode_stance(stance_classification)
+        stance_vec = encode_stance(stance_text)
     
     st.success("✓ Generated composite topic embeddings and stance embeddings")
 
