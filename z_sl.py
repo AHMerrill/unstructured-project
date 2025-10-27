@@ -694,10 +694,24 @@ if uploaded:
     # Load the topic summary text (stored in Stage 5a)
     uploaded_summary_text = topic_summary  # This is the GPT-generated summary text
     
-    # Pre-encode the uploaded summary ONCE to avoid re-encoding in the loop
+    # Pre-encode the uploaded summary ONCE
     uploaded_summary_vec = topic_model.encode(uploaded_summary_text, normalize_embeddings=True, show_progress_bar=False)
     if uploaded_summary_vec.ndim == 2:
         uploaded_summary_vec = uploaded_summary_vec.flatten()
+    
+    # Pre-encode ALL candidate summaries ONCE (batch encode)
+    candidate_summaries = [md.get("openai_topic_summary", "") for md in candidate_metadatas]
+    unique_summaries = list(set(s for s in candidate_summaries if s))
+    
+    # Batch encode unique summaries
+    st.caption(f"Pre-encoding {len(unique_summaries)} unique summaries from database...")
+    encoded_summaries = {}
+    if unique_summaries:
+        batch_vecs = topic_model.encode(unique_summaries, normalize_embeddings=True, show_progress_bar=True)
+        for summ, vec in zip(unique_summaries, batch_vecs):
+            if vec.ndim == 2:
+                vec = vec.flatten()
+            encoded_summaries[summ] = vec
     
     st.caption(f"Checking {len(candidate_embeddings)} topic vectors from database...")
     passed_summary = 0
@@ -765,13 +779,11 @@ if uploaded:
         # NOTEBOOK ORDER: summary similarity SECOND (match notebook line 2398-2411)
         emb_array = np.array(emb)
         
-        # For 768-dim vectors: encode the old summary text if available
+        # Use pre-encoded summary if available
         old_summary = md.get("openai_topic_summary", "")
-        if old_summary:
-            # Encode candidate summary and compare with pre-encoded uploaded summary
-            candidate_summary_vec = topic_model.encode(old_summary, normalize_embeddings=True, show_progress_bar=False)
-            if candidate_summary_vec.ndim == 2:
-                candidate_summary_vec = candidate_summary_vec.flatten()
+        if old_summary and old_summary in encoded_summaries:
+            # Use pre-encoded candidate summary
+            candidate_summary_vec = encoded_summaries[old_summary]
             summary_similarity = float(
                 cosine_similarity(
                     uploaded_summary_vec.reshape(1, -1),
