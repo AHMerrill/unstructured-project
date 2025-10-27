@@ -600,6 +600,11 @@ if uploaded:
     
     st.success(f"✓ Topic summary: {topic_summary}")
     
+    # Step 3.5: Extract canonical topics (needed for matching)
+    # For now, use topic_summary as a proxy - the full implementation would match against anchors
+    # This is a simplified version - in the full notebook, it does hierarchical clustering and matches to anchors
+    upload_topics_list = []  # Empty for now, will use summary similarity primarily
+    
     # Step 4: Generate embeddings (composite topic + stance)
     status_text.text("Step 4/5: Generating embeddings...")
     progress_bar.progress(60)
@@ -644,11 +649,13 @@ if uploaded:
     status_text.text("Step 6/6: Calculating anti-echo scores...")
     progress_bar.progress(85)
 
-    # For now, use empty topic list for uploaded article (could improve by extracting topics)
-    upload_topics_list = []
+    # Use the topics list we have (currently empty, using summary similarity primarily)
 
     # Constants from notebook
-    CANONICAL_TOPIC_THRESHOLD = 0.3
+    # NOTE: Set topic threshold to 0.0 since we don't extract canonical topics for uploaded article
+    # The notebook extracts topics via hierarchical clustering + anchor matching in Stage 5a
+    # For simplicity, we rely primarily on summary similarity (0.8 threshold)
+    CANONICAL_TOPIC_THRESHOLD = 0.0  # Disabled: app doesn't extract canonical topics yet
     SUMMARY_SIMILARITY_THRESHOLD = 0.8
 
     all_matches = []
