@@ -617,7 +617,7 @@ if uploaded:
         )
         topic_summary = summary_response.choices[0].message.content.strip().strip('"').strip("'")
     
-    st.success(f"✓ Topic summary: {topic_summary}")
+    st.markdown(f"**Topic Summary:** {topic_summary}")
     
     # Step 3.5: Extract canonical topics (will be populated after hierarchical clustering)
     upload_topics_list = []  # Will be populated below
