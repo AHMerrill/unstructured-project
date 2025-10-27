@@ -1,0 +1,13 @@
+streamlit
+openai
+chromadb
+sentence-transformers
+huggingface_hub
+scikit-learn
+pdfplumber
+beautifulsoup4
+rapidfuzz
+nltk
+pyyaml
+pandas
+torch
