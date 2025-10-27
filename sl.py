@@ -150,15 +150,15 @@ This tool helps you find **ideologically diverse coverage** of news stories you'
 
 5. **Semantic Search in ChromaDB**
    - Retrieves ALL topic documents using `collection.get()` to fetch full corpus (no pre-filtering)
-   - Pre-encodes all unique candidate summaries once to avoid repeated encoding in the loop
-   - For each candidate vector in the database:
+   - **Groups vectors by article ID** (each article has multiple vectors from hierarchical clustering)
+   - For each unique article in the database:
      - Computes Jaccard similarity on canonical topic labels (must have ≥30% overlap)
-     - **If the vector is tagged as OpenAI summary** (`topic_source == "openai_summary"`): uses it directly
-     - **If it's a base topic vector**: checks for summary text in metadata and uses cached encoding
-     - **Fallback**: compares base topic vectors if no summary available
+     - **Finds the OpenAI summary vector** if it exists (tagged as `topic_source == "openai_summary"`)
+     - **Uses that pre-encoded vector directly** for comparison (no re-encoding!)
+     - **Fallback**: uses first base topic vector if no OpenAI summary vector exists
      - Compares your summary embedding vs. candidate's via cosine similarity (must have ≥80%)
    - Filters candidates passing both thresholds
-   - Deduplicates to keep best match per unique article ID (by highest summary similarity)
+   - Result: One match per unique article (not per vector)
 
 6. **Anti-Echo Scoring & Results Display**
    - **Two-stage computation** (matches notebook logic):
