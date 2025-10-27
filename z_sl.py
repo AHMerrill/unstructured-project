@@ -114,36 +114,33 @@ This tool helps you find **ideologically diverse coverage** of news stories you'
 
 ### 📊 How It Works
 
-1. **Upload Your Article** (PDF, TXT, or HTML)
+1. **Upload & Source Confirmation**
    - Extracts text using `pdfplumber`, `BeautifulSoup`, or direct text parsing
-   
-2. **Generate Semantic Embeddings**
-   - **Topic Embeddings:** Uses `intfloat/e5-base-v2` SentenceTransformer (768-dim) to create dense semantic vectors capturing article topics
-     - GPT-4o-mini generates one-sentence topic summaries for fine-grained matching
-     - Composite embeddings combine topic vectors with GPT summaries (1536-dim)
-   - **Stance Embeddings:** Uses `all-mpnet-base-v2` SentenceTransformer to encode political stance, tone, and worldview
-     - GPT-4o-mini classifies political leaning, implied stance, and argument summary
-     - These classifications are embedded with mpnet to create hybrid stance vectors
-   - Both embedding types use cosine similarity search in ChromaDB
-   
-3. **Bias Inference**
-   - Uses GPT-4o-mini to classify the article's political bias on a -1.0 (far left) to +1.0 (far right) scale
-   - Compares against `source_bias.json` for outlet-level bias mapping
-   
-4. **Semantic Search in ChromaDB**
-   - Queries the topic collection using cosine similarity (`hnsw:space="cosine"`)
-   - Retrieves top 100 candidate articles with similar topic embeddings
-   - Matches stance vectors via article ID to compute stance similarity
-   
-5. **Anti-Echo Scoring**
-   - Calculates weighted score favoring:
-     - ✅ High topic similarity (e5-base-v2 embeddings)
-     - ✅ Low stance similarity (mpnet-base embeddings)  
-     - ✅ Large bias differences (GPT-4o-mini classification)
-   
-6. **Return Results**
-   - Displays ideologically diverse coverage organized by similarity type
-   - All metrics available for download as CSV
+   - GPT-4o-mini infers the publication source, you confirm or edit it
+   - GPT-4o-mini classifies political bias (-1.0 to +1.0) by matching against known outlets
+
+2. **Generate Topic Summary**
+   - GPT-4o-mini generates a one-sentence topic summary (max 20 words)
+   - Example: "Trump's plan to use unspent Defense Department funds to pay military personnel during a government shutdown violates the Constitution"
+
+3. **Generate Composite Topic Embedding**
+   - Base topic embedding: Uses `intfloat/e5-base-v2` (768 dim) on article text
+   - Summary embedding: Uses `intfloat/e5-base-v2` on the GPT topic summary
+   - Composite: Concatenates base + summary = 1536-dim vector
+
+4. **Generate Stance Embedding**
+   - GPT-4o-mini classifies: political leaning, implied stance, argument summary
+   - These texts are concatenated and embedded with `all-mpnet-base-v2` (768 dim)
+
+5. **Semantic Search in ChromaDB**
+   - Retrieves ALL topic documents from the database
+   - For each candidate: compares canonical topics (Jaccard + semantic) and summary embeddings
+   - Filters candidates with topic overlap ≥ 0.0 and summary similarity ≥ 0.8
+   - Deduplicates to keep best match per unique article
+
+6. **Anti-Echo Scoring & Results**
+   - Calculates weighted score favoring high topic similarity, low stance similarity, large bias differences
+   - Displays organized results by similarity type
 
 ---
 
