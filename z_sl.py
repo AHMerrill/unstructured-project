@@ -134,9 +134,12 @@ This tool helps you find **ideologically diverse coverage** of news stories you'
    - Example: "Trump's plan to use unspent Defense Department funds to pay military personnel during a government shutdown violates the Constitution"
 
 3. **Generate Topic Embedding**
-   - Hierarchical clustering of sentences using `intfloat/e5-base-v2` (768 dim)
-   - Extracts canonical topics via anchor matching
-   - Stores topic vector (768-dim) and summary text (for comparison)
+   - Hierarchical clustering of sentences into topical segments using `intfloat/e5-base-v2` (768 dim)
+   - Each segment creates a topic vector; multiple vectors per article capture different angles
+   - **Canonical topic extraction**: Matches each vector to topic anchors using cosine similarity
+     - Selects up to 5 most similar topics per vector (similarity threshold ≥0.4)
+     - Deduplicates across all vectors to get final canonical topic list (max 8 topics)
+   - Stores primary topic vector (768-dim) and GPT summary text (for semantic comparison)
 
 4. **Generate Stance Embedding & Tone Matching**
    - GPT-4o-mini classifies: political leaning, implied stance, argument summary
@@ -146,21 +149,30 @@ This tool helps you find **ideologically diverse coverage** of news stories you'
      - If difference >0.3: ⚠ Mismatch detected (author may deviate from outlet's usual stance)
 
 5. **Semantic Search in ChromaDB**
-   - Retrieves ALL topic documents from the database
-   - For each candidate: 
+   - Retrieves ALL topic documents from the database (not pre-filtered by ChromaDB query)
+   - Pre-encodes all unique candidate summaries to optimize performance
+   - For each candidate:
      - Computes Jaccard similarity on canonical topic labels (must have ≥30% overlap)
+     - Encodes candidate's GPT summary text if available, otherwise uses base topic vector
      - Compares OpenAI summary embeddings via cosine similarity (must have ≥80% similarity)
    - Filters candidates passing both thresholds
-   - Deduplicates to keep best match per unique article
+   - Deduplicates to keep best match per unique article ID (by highest summary similarity)
 
-6. **Anti-Echo Scoring & Results**
-   - For each matched candidate article:
-     - Extracts source bias and tone scores from the database
-     - Computes stance similarity via cosine comparison of stance embeddings
-     - Calculates bias difference (|your bias - candidate bias|) and tone difference
-   - Anti-echo score: (topic overlap × weight) + (summary similarity × weight) - (stance similarity × weight) - (bias difference × weight) - (tone difference × weight)
+6. **Anti-Echo Scoring & Results Display**
+   - **Two-stage computation** (matches notebook logic):
+     - First: Filter candidates by topic overlap (≥30%) and summary similarity (≥80%), deduplicate
+     - Second: For each matched article, compute full scoring metrics
+   - **Scoring metrics** extracted from database:
+     - Source bias score (outlet's political leaning)
+     - Tone score (author tone vs. outlet bias alignment)
+     - Stance similarity via cosine comparison of stance embeddings
+   - **Final anti-echo score**: (topic overlap × weight) + (summary similarity × weight) - (stance similarity × weight) - (bias difference × weight) - (tone difference × weight)
    - Higher scores = better matches (same topic, different viewpoint)
-   - Displays organized results by category: ideological spread overview, same topic/different bias, opposite stance, top candidates
+   - **Displays organized results** by category:
+     - Ideological spread overview (left vs. right outlets)
+     - Same topic/different source bias (sorted by bias_diff ↓, summary_sim ↓)
+     - Same topic/opposite stance (filtered by thresholds, sorted by stance_sim ↑, summary_sim ↓)
+     - Top anti-echo candidates (sorted by anti_echo_score ↓)
 
 ---
 
@@ -669,15 +681,20 @@ if uploaded:
         # Match to topic anchors to extract canonical topics (like notebook lines 1199-1208)
         all_labels = []
         for vec in topic_vecs_list:
-            # Find best matching topic from anchors
-            max_sim = -1
-            best_label = "General / Miscellaneous"
-            for label, anchor_vec in topic_anchors.items():
-                sim = float(cosine_similarity([vec], [anchor_vec])[0][0])
-                if sim > max_sim:
-                    max_sim = sim
-                    best_label = label
-            all_labels.append(best_label)
+            # Match like notebook match_topics function (lines 1176-1188)
+            scores = {
+                label: float(cosine_similarity([vec], [anchor_vec])[0][0])
+                for label, anchor_vec in topic_anchors.items()
+            }
+            ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+            selected = []
+            threshold = 0.4
+            for i, (label, sim) in enumerate(ranked[:5]):  # max_topics=5
+                if i == 0 or sim >= threshold:
+                    selected.append(label)
+            if not selected:
+                selected = ["General / Miscellaneous"]
+            all_labels.extend(selected)
         
         # Deduplicate and limit to top 8 (like notebook line 1208)
         flat_topics = list(dict.fromkeys(all_labels))[:8]
@@ -952,7 +969,8 @@ if uploaded:
     st.subheader("📰 Same Topic — Different Source Bias")
     st.markdown("*Articles covering the same topic but with different ideological perspectives*")
     
-    diff_bias = df[df['bias_diff'] > 0.3].sort_values(['bias_diff', 'summary_similarity'], ascending=[False, False]).head(3)
+    # Match notebook line 2531 (no filtering, just sort)
+    diff_bias = df.sort_values(['bias_diff', 'summary_similarity'], ascending=[False, False]).head(3)
     
     if not diff_bias.empty:
         for idx, (_, row) in enumerate(diff_bias.iterrows(), 1):
@@ -970,7 +988,11 @@ if uploaded:
     st.subheader("📝 Same Topic — Opposite Stance")
     st.markdown("*Articles covering the same topic but with opposing political stances*")
     
-    opp_stance = df[df['stance_similarity'] < 0.7].sort_values(['stance_similarity', 'summary_similarity'], ascending=[True, False]).head(3)
+    # Match notebook filtering (lines 2532-2535)
+    opp_stance = df[
+        (df['summary_similarity'] >= SUMMARY_SIMILARITY_THRESHOLD) &
+        (df['canonical_overlap'] >= CANONICAL_TOPIC_THRESHOLD)
+    ].sort_values(['stance_similarity', 'summary_similarity'], ascending=[True, False]).head(3)
     
     if not opp_stance.empty:
         for idx, (_, row) in enumerate(opp_stance.iterrows(), 1):
