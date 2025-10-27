@@ -634,13 +634,12 @@ if uploaded:
         elif len(sents) < 2:
             topic_vecs_list = [encode_topic(" ".join(sents))]
         else:
-        # Hierarchical clustering like notebook
-        emb = encode_topic(sents)
-        k = min(max(1, len(sents)//8), 8)
-        from sklearn.cluster import AgglomerativeClustering
-        labels = AgglomerativeClustering(n_clusters=k).fit_predict(emb)
-        segs = [" ".join([s for s, l in zip(sents, labels) if l == lab]) for lab in sorted(set(labels))]
-        topic_vecs_list = [encode_topic(seg) for seg in segs]
+            # Hierarchical clustering like notebook
+            emb = encode_topic(sents)
+            k = min(max(1, len(sents)//8), 8)
+            labels = AgglomerativeClustering(n_clusters=k).fit_predict(emb)
+            segs = [" ".join([s for s, l in zip(sents, labels) if l == lab]) for lab in sorted(set(labels))]
+            topic_vecs_list = [encode_topic(seg) for seg in segs]
         
         # Match to topic anchors to extract canonical topics (like notebook lines 1199-1208)
         all_labels = []
