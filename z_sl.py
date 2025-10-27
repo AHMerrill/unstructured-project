@@ -686,7 +686,7 @@ if uploaded:
     
     with st.spinner("Retrieving all topic documents..."):
         # Like notebook line 2365: get ALL topic docs (not query)
-        topic_docs = topic_coll.get(include=["embeddings", "metadatas"])
+    topic_docs = topic_coll.get(include=["embeddings", "metadatas"])
     
     candidate_embeddings = topic_docs["embeddings"]
     candidate_metadatas = topic_docs["metadatas"]
