@@ -778,6 +778,7 @@ if uploaded:
             - (w_Tone * tone_diff)
         )
         all_matches.append({
+            "article_id": article_id_base,
             "title": md.get("title", "Untitled"),
             "source": md.get("source", "Unknown"),
             "bias_family": md.get("bias_family", ""),
@@ -791,17 +792,26 @@ if uploaded:
             "url": md.get("url", "")
         })
 
-    st.caption(f"✓ {passed_summary} passed summary threshold ≥ {SUMMARY_SIMILARITY_THRESHOLD}, {passed_topic} passed topic threshold ≥ {CANONICAL_TOPIC_THRESHOLD}, {len(all_matches)} final matches")
+    st.caption(f"✓ {passed_summary} passed summary threshold ≥ {SUMMARY_SIMILARITY_THRESHOLD}, {passed_topic} passed topic threshold ≥ {CANONICAL_TOPIC_THRESHOLD}, {len(all_matches)} before deduplication")
+    
+    # Deduplicate by article_id, keep best match (notebook line 2431-2437)
+    best_matches = {}
+    for match in all_matches:
+        aid = match.get("article_id", match.get("source", "unknown"))
+        if aid not in best_matches or match["summary_similarity"] > best_matches[aid]["summary_similarity"]:
+            best_matches[aid] = match
+    
+    st.caption(f"✓ After deduplication: {len(best_matches)} unique articles")
 
     progress_bar.progress(100)
     status_text.text("✓ Analysis complete!")
     
-    if not all_matches:
+    if not best_matches:
         st.warning("⚠️ **No articles matched the search criteria after filtering.**")
         st.info("This could mean:\n1. No articles in the database share similar topics\n2. Thresholds are too strict (canonical ≥ 0.3, summary ≥ 0.8)")
         st.stop()
     
-    df = pd.DataFrame(all_matches).sort_values("anti_echo_score", ascending=False).head(100)
+    df = pd.DataFrame(best_matches.values()).sort_values("anti_echo_score", ascending=False).head(100)
     
     st.markdown("---")
     
