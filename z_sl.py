@@ -662,6 +662,9 @@ if uploaded:
     status_text.text("Step 6/6: Calculating anti-echo scores...")
     progress_bar.progress(85)
 
+    # For now, use empty topic list for uploaded article (could improve by extracting topics)
+    upload_topics_list = []
+
     all_matches = []
     for i, (emb, md) in enumerate(zip(candidate_embeddings, candidate_metadatas)):
         # Calculate similarities - embeddings in DB are 768 dim
@@ -723,7 +726,7 @@ if uploaded:
             return []
         
         candidate_topics = md.get("topics_flat", [])
-        upload_topics = topics_flat if isinstance(topics_flat, list) else []
+        upload_topics = upload_topics_list
         
         A = set([t.strip().lower() for t in parse_topics(upload_topics)])
         B = set([t.strip().lower() for t in parse_topics(candidate_topics)])
