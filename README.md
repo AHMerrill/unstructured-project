@@ -1,5 +1,13 @@
 # anti echo chamber
 
+---
+
+# [Launch Anti Echo Chamber App](https://unstructured-project-xlzf4hh2vay9gsnrychgms.streamlit.app/)
+
+Explore ideologically diverse coverage of current topics — compare how different outlets frame the same event and visualize stance polarity in real time.
+
+---
+
 Builds an embedding index of news and commentary for studying topic framing and sentiment polarity across sources.  
 This repository handles scraping, embedding, batching, and coordination for the Hugging Face dataset [`zanimal/unstructured-project`](https://huggingface.co/datasets/zanimal/unstructured-project).
 
