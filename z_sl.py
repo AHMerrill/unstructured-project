@@ -667,58 +667,7 @@ if uploaded:
     passed_topic = 0
     
     for i, (emb, md) in enumerate(zip(candidate_embeddings, candidate_metadatas)):
-        # Calculate summary similarity (like notebook line 2401-2407)
-        emb_array = np.array(emb)
-        if len(emb_array) == 1536:
-            # New composite format: compare summary portions
-            candidate_summary_vec = emb_array[768:]
-            summary_similarity = float(cosine_similarity(uploaded_summary.reshape(1, -1), candidate_summary_vec.reshape(1, -1))[0][0])
-        else:
-            # Old 768-dim format: compare base embeddings
-            summary_similarity = float(cosine_similarity(uploaded_summary.reshape(1, -1), emb_array.reshape(1, -1))[0][0])
-        
-        # FILTER: Check summary similarity threshold (like notebook line 2411)
-        if summary_similarity < SUMMARY_SIMILARITY_THRESHOLD:
-            continue
-        passed_summary += 1
-        
-        # Match stance by article ID
-        article_id_base = md.get("id", "").split("::")[0]
-        stance_data = stance_dict.get(article_id_base)
-        stance_sim = 0.0
-        tone_db = 0.0
-        
-        if stance_data is not None:
-            stance_match_emb, s_md_stance = stance_data
-            stance_sim = float(cosine_similarity([stance_vec], [stance_match_emb])[0][0])
-        else:
-            s_md_stance = None
-        
-        # Debug: print metadata keys on first iteration
-        if i == 0:
-            st.caption(f"🔍 Debug: Topic metadata keys: {list(md.keys())}")
-            if s_md_stance:
-                st.caption(f"🔍 Debug: Stance metadata keys: {list(s_md_stance.keys())}")
-                st.caption(f"🔍 Debug: Stance metadata sample: bias_score={s_md_stance.get('bias_score')}, type={type(s_md_stance.get('bias_score'))}")
-            else:
-                st.caption("🔍 Debug: No stance metadata found for this article")
-        
-        # Extract bias from stance metadata (not topic metadata!)
-        bias_db = 0.0
-        tone_db = 0.0
-        
-        # Get bias from stance metadata
-        if s_md_stance:
-            try:
-                bias_db = float(s_md_stance.get("bias_score", 0.0))
-            except (ValueError, TypeError):
-                pass
-            
-            try:
-                tone_db = float(s_md_stance.get("tone_score", bias_db))
-            except (ValueError, TypeError):
-                tone_db = bias_db
-        
+        # NOTEBOOK ORDER: canonical overlap FIRST (line 2394)
         # Calculate canonical topic overlap using Jaccard similarity (same as notebook)
         def parse_topics(obj):
             if obj is None:
@@ -762,10 +711,64 @@ if uploaded:
             else:
                 canonical_overlap = jaccard
         
-        # FILTER: Check canonical topic overlap threshold (like notebook line 2395)
+        # FILTER: Check canonical topic overlap threshold (notebook line 2395)
         if canonical_overlap < CANONICAL_TOPIC_THRESHOLD:
             continue
-        passed_topic += 1
+        
+        # NOTEBOOK ORDER: summary similarity SECOND (line 2398-2411)
+        emb_array = np.array(emb)
+        if len(emb_array) == 1536:
+            # New composite format: compare summary portions
+            candidate_summary_vec = emb_array[768:]
+            summary_similarity = float(cosine_similarity(uploaded_summary.reshape(1, -1), candidate_summary_vec.reshape(1, -1))[0][0])
+        else:
+            # Old 768-dim format: check if has summary text
+            old_summary = md.get("openai_topic_summary", "")
+            if old_summary:
+                # Encode the text summary and compare
+                def encode_text(text):
+                    vec = topic_model.encode(text, normalize_embeddings=True, show_progress_bar=False)
+                    if vec.ndim == 2:
+                        vec = vec.flatten()
+                    return vec
+                candidate_summary_vec = encode_text(old_summary)
+                summary_similarity = float(cosine_similarity(uploaded_summary.reshape(1, -1), candidate_summary_vec.reshape(1, -1))[0][0])
+            else:
+                # Fallback: compare with base topic
+                uploaded_base_topic = topic_vec[:768] if len(topic_vec) == 1536 else topic_vec
+                summary_similarity = float(cosine_similarity(uploaded_base_topic.reshape(1, -1), emb_array.reshape(1, -1))[0][0])
+        
+        # FILTER: Check summary similarity threshold (notebook line 2411)
+        if summary_similarity < SUMMARY_SIMILARITY_THRESHOLD:
+            continue
+        
+        # Match stance by article ID
+        article_id_base = md.get("id", "").split("::")[0]
+        stance_data = stance_dict.get(article_id_base)
+        stance_sim = 0.0
+        tone_db = 0.0
+        
+        if stance_data is not None:
+            stance_match_emb, s_md_stance = stance_data
+            stance_sim = float(cosine_similarity([stance_vec], [stance_match_emb])[0][0])
+        else:
+            s_md_stance = None
+        
+        # Extract bias from stance metadata (not topic metadata!)
+        bias_db = 0.0
+        tone_db = 0.0
+        
+        # Get bias from stance metadata
+        if s_md_stance:
+            try:
+                bias_db = float(s_md_stance.get("bias_score", 0.0))
+            except (ValueError, TypeError):
+                pass
+            
+            try:
+                tone_db = float(s_md_stance.get("tone_score", bias_db))
+            except (ValueError, TypeError):
+                tone_db = bias_db
         
         bias_diff = abs(bias_uploaded - bias_db)
         tone_diff = abs(bias_uploaded - tone_db)
