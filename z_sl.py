@@ -141,13 +141,16 @@ This tool helps you find **ideologically diverse coverage** of news stories you'
 
 5. **Semantic Search in ChromaDB**
    - Retrieves ALL topic documents from the database
-   - For each candidate: compares canonical topics and encodes summary text for similarity
-   - Filters candidates by topic overlap and summary similarity (thresholds: topic ≥ 0.0, summary ≥ 0.8)
+   - For each candidate: 
+     - Computes Jaccard similarity on canonical topic labels (must have ≥30% overlap)
+     - Compares OpenAI summary embeddings via cosine similarity (must have ≥80% similarity)
+   - Filters candidates passing both thresholds
    - Deduplicates to keep best match per unique article
 
 6. **Anti-Echo Scoring & Results**
-   - Calculates weighted score favoring high topic similarity, low stance similarity, large bias differences
-   - Displays organized results by similarity type
+   - Computes stance similarity via cosine comparison of stance embeddings
+   - Calculates anti-echo score: (topic overlap × weight) + (summary similarity × weight) - (stance similarity × weight) - (bias difference × weight) - (tone difference × weight)
+   - Displays organized results by similarity type (same topic / different bias, opposite stance, top candidates)
 
 ---
 
@@ -763,8 +766,8 @@ if uploaded:
         candidate_topics = md.get("topics_flat", [])
         upload_topics = upload_topics_list
         
-        A = set([t.strip().lower() for t in parse_topics(upload_topics)])
-        B = set([t.strip().lower() for t in parse_topics(candidate_topics)])
+        A = set([t.lower() for t in parse_topics(upload_topics)])
+        B = set([t.lower() for t in parse_topics(candidate_topics)])
         
         if not A or not B:
             canonical_overlap = 0.0
