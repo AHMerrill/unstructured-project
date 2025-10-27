@@ -114,24 +114,31 @@ This tool helps you find **ideologically diverse coverage** of news stories you'
 ### 📊 How It Works
 
 1. **Upload Your Article** (PDF, TXT, or HTML)
-   - The tool extracts and analyzes the text
+   - Extracts text using `pdfplumber`, `BeautifulSoup`, or direct text parsing
    
-2. **Analyze Bias & Stance**
-   - Uses AI to determine the article's political bias
-   - Creates semantic embeddings for topic and stance
+2. **Generate Semantic Embeddings**
+   - **Topic Embeddings:** Uses `intfloat/e5-base-v2` SentenceTransformer (768-dim) to create dense semantic vectors capturing article topics
+   - **Stance Embeddings:** Uses `all-mpnet-base-v2` SentenceTransformer to encode political stance, tone, and worldview
+   - Both models are optimized for cosine similarity search in ChromaDB
    
-3. **Search Database**
-   - Finds articles covering similar topics from hundreds of news sources
+3. **Bias Inference**
+   - Uses GPT-4o-mini to classify the article's political bias on a -1.0 (far left) to +1.0 (far right) scale
+   - Compares against `source_bias.json` for outlet-level bias mapping
    
-4. **Score for Diversity**
-   - Calculates an "Anti-Echo Score" that favors:
-     - ✅ Same topic/event (high similarity)
-     - ✅ Different political stance (low similarity)
-     - ✅ Different ideological bias (large difference)
+4. **Semantic Search in ChromaDB**
+   - Queries the topic collection using cosine similarity (`hnsw:space="cosine"`)
+   - Retrieves top 100 candidate articles with similar topic embeddings
+   - Matches stance vectors via article ID to compute stance similarity
    
-5. **Return Results**
-   - Shows you the most ideologically diverse coverage
-   - Download results as CSV
+5. **Anti-Echo Scoring**
+   - Calculates weighted score favoring:
+     - ✅ High topic similarity (e5-base-v2 embeddings)
+     - ✅ Low stance similarity (mpnet-base embeddings)  
+     - ✅ Large bias differences (GPT-4o-mini classification)
+   
+6. **Return Results**
+   - Displays ideologically diverse coverage organized by similarity type
+   - All metrics available for download as CSV
 
 ---
 
@@ -477,6 +484,11 @@ if uploaded:
     progress_bar.progress(10)
     
     inferred_source = infer_source_name(text)
+    
+    # Store in session state
+    if 'source_confirmed' not in st.session_state:
+        st.session_state.source_confirmed = None
+    
     source_confirmed = st.text_input(
         "Confirm or edit the source:", 
         value=inferred_source,
@@ -484,17 +496,22 @@ if uploaded:
         help="The publication or outlet name. Press Enter to confirm."
     )
     
-    if not source_confirmed or source_confirmed == "":
+    # Button to confirm
+    if st.button("✓ Confirm Source", type="primary"):
+        st.session_state.source_confirmed = source_confirmed
+    
+    if not st.session_state.source_confirmed:
+        st.info("👆 Please confirm the source above to continue")
         st.stop()
     
-    st.success(f"✓ Source: **{source_confirmed}**")
+    st.success(f"✓ Source: **{st.session_state.source_confirmed}**")
     
     # Step 2: Infer bias
     status_text.text("Step 2/5: Inferring article bias...")
     progress_bar.progress(30)
     
     with st.spinner("Inferring article bias..."):
-        bias_uploaded = infer_bias_from_text(text, source_confirmed, openai_client)
+        bias_uploaded = infer_bias_from_text(text, st.session_state.source_confirmed, openai_client)
     
     st.success(f"✓ Detected bias: **{interpret_bias(bias_uploaded)}** (score: {bias_uploaded:.2f})")
     
@@ -552,13 +569,49 @@ if uploaded:
             stance_match_emb, _ = stance_data
             stance_sim = float(cosine_similarity([stance_vec], [stance_match_emb])[0][0])
         
-        # Extract bias and tone from metadata
-        bias_db = float(md.get("bias_score", 0.0))
+        # Debug: print metadata keys on first iteration
+        if i == 0:
+            st.caption(f"🔍 Debug: Metadata keys: {list(md.keys())}")
+            st.caption(f"🔍 Debug: Sample values: bias_score={md.get('bias_score')}, source_bias={md.get('source_bias')}")
+        
+        # Extract bias from metadata - try multiple fields
+        bias_db = 0.0
+        
+        # Direct bias_score field
+        if "bias_score" in md:
+            try:
+                bias_db = float(md["bias_score"])
+            except (ValueError, TypeError):
+                pass
+        
+        # Nested in source_bias dict
+        if bias_db == 0.0 and "source_bias" in md:
+            try:
+                if isinstance(md["source_bias"], str):
+                    bias_data = json.loads(md["source_bias"])
+                else:
+                    bias_data = md["source_bias"]
+                if isinstance(bias_data, dict) and "bias_score" in bias_data:
+                    bias_db = float(bias_data["bias_score"])
+            except (json.JSONDecodeError, ValueError, TypeError, KeyError):
+                pass
+        
+        # Try extracting from any nested structure
+        if bias_db == 0.0:
+            for key in ["bias", "political_bias", "ideology"]:
+                if key in md and isinstance(md[key], (int, float)):
+                    bias_db = float(md[key])
+                    break
         
         # Get tone from stance metadata if available
+        tone_db = bias_db  # Default
         if stance_data:
             _, s_md = stance_data
-            tone_db = float(s_md.get("tone_score", bias_db))  # Fallback to bias_score
+            if "tone_score" in s_md:
+                try:
+                    tone_db = float(s_md["tone_score"])
+                except:
+                    pass
         
         # Calculate topic overlap (simplified - using summary similarity as proxy)
         candidate_topics = md.get("topics_flat", [])
@@ -578,9 +631,9 @@ if uploaded:
             - (w_Tone * tone_diff)
         )
         all_matches.append({
-            "title": md.get("title","Untitled"),
-            "source": md.get("source","Unknown"),
-            "bias_family": md.get("bias_family",""),
+            "title": md.get("title", "Untitled"),
+            "source": md.get("source", "Unknown"),
+            "bias_family": md.get("bias_family", ""),
             "bias_score": bias_db,
             "canonical_overlap": canonical_overlap,
             "summary_similarity": summary_similarity,
@@ -588,52 +641,78 @@ if uploaded:
             "bias_diff": bias_diff,
             "tone_diff": tone_diff,
             "anti_echo_score": anti_echo_score,
-            "url": md.get("url","")
+            "url": md.get("url", "")
         })
 
     progress_bar.progress(100)
     status_text.text("✓ Analysis complete!")
 
-    st.markdown("---")
-    st.subheader("📊 Results")
-    
-    df = pd.DataFrame(all_matches).sort_values("anti_echo_score", ascending=False).head(10)
+    df = pd.DataFrame(all_matches).sort_values("anti_echo_score", ascending=False).head(100)
     
     if df.empty:
         st.warning("No articles matched the search criteria.")
+        st.stop()
+    
+    st.markdown("---")
+    
+    # SECTION 1: Same Topic — Different Source Bias
+    st.subheader("📰 Same Topic — Different Source Bias")
+    st.markdown("*Articles covering the same topic but with different ideological perspectives*")
+    
+    diff_bias = df[df['bias_diff'] > 0.3].sort_values(['bias_diff', 'summary_similarity'], ascending=[False, False]).head(3)
+    
+    if not diff_bias.empty:
+        for idx, (_, row) in enumerate(diff_bias.iterrows(), 1):
+            st.markdown(f"### {idx}. [{row['title']}]({row['url'] if row.get('url') else '#'})")
+            st.markdown(f"**Source:** {row['source']} | **Bias:** {interpret_bias(row['bias_score'])} ({row['bias_score']:.2f})")
+            st.markdown(f"**Anti-Echo Score:** {row['anti_echo_score']:.3f} | **Bias Difference:** {row['bias_diff']:.2f} | **Summary Similarity:** {row['summary_similarity']:.3f}")
     else:
-        st.write(f"Found **{len(df)}** articles with ideologically diverse coverage:")
-        
-        # Display results organized like notebook
-        for idx, row in df.iterrows():
-            with st.expander(f"{idx+1}. {row['title']} — {row['source']}"):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown(f"**Source:** {row['source']}")
-                    st.markdown(f"**Bias:** {interpret_bias(row['bias_score'])} ({row['bias_score']:.2f})")
-                    st.markdown(f"**Bias Family:** {row['bias_family']}")
-                with col2:
-                    st.markdown(f"**Anti-Echo Score:** {row['anti_echo_score']:.3f}")
-                    st.markdown(f"**Summary Similarity:** {row['summary_similarity']:.3f}")
-                    st.markdown(f"**Stance Similarity:** {row['stance_similarity']:.3f}")
-                
-                if row.get('url'):
-                    st.markdown(f"🔗 [Read Article]({row['url']})")
-        
-        st.markdown("---")
-        st.subheader("📊 Detailed Metrics")
-        st.dataframe(df[["title", "source", "anti_echo_score", "summary_similarity", "stance_similarity", "bias_score", "bias_family", "url"]], use_container_width=True)
-        
-        st.markdown("---")
-        st.subheader("📥 Download Results")
-        csv = df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "📄 Download Full Results as CSV", 
-            csv, 
-            f"anti_echo_results.csv", 
-            mime="text/csv",
-            help="Download the complete analysis with all metrics"
-        )
+        st.info("No articles found with significant bias differences.")
+    
+    st.markdown("---")
+    
+    # SECTION 2: Same Topic — Opposite Stance  
+    st.subheader("📝 Same Topic — Opposite Stance")
+    st.markdown("*Articles covering the same topic but with opposing political stances*")
+    
+    opp_stance = df[df['stance_similarity'] < 0.7].sort_values(['stance_similarity', 'summary_similarity'], ascending=[True, False]).head(3)
+    
+    if not opp_stance.empty:
+        for idx, (_, row) in enumerate(opp_stance.iterrows(), 1):
+            st.markdown(f"### {idx}. [{row['title']}]({row['url'] if row.get('url') else '#'})")
+            st.markdown(f"**Source:** {row['source']} | **Bias:** {interpret_bias(row['bias_score'])} ({row['bias_score']:.2f})")
+            st.markdown(f"**Anti-Echo Score:** {row['anti_echo_score']:.3f} | **Stance Similarity:** {row['stance_similarity']:.3f} | **Summary Similarity:** {row['summary_similarity']:.3f}")
+    else:
+        st.info("No articles found with opposing stances.")
+    
+    st.markdown("---")
+    
+    # SECTION 3: Top Anti-Echo Candidates
+    st.subheader("🏆 Top Anti-Echo Candidates (Best Overall Matches)")
+    st.markdown("*Articles that best balance topic similarity with ideological diversity*")
+    
+    top_candidates = df.head(3)
+    
+    for idx, (_, row) in enumerate(top_candidates.iterrows(), 1):
+        st.markdown(f"### {idx}. [{row['title']}]({row['url'] if row.get('url') else '#'})")
+        st.markdown(f"**Source:** {row['source']} | **Bias:** {interpret_bias(row['bias_score'])} ({row['bias_score']:.2f})")
+        st.markdown(f"**Anti-Echo Score:** {row['anti_echo_score']:.3f} | **Bias Diff:** {row['bias_diff']:.2f} | **Summary Sim:** {row['summary_similarity']:.3f} | **Stance Sim:** {row['stance_similarity']:.3f}")
+    
+    st.markdown("---")
+    st.subheader("📊 All Results (Full Dataset)")
+    st.dataframe(df[["title", "source", "anti_echo_score", "summary_similarity", "stance_similarity", "bias_score", "bias_family", "url"]], use_container_width=True, height=400)
+    
+    st.markdown("---")
+    st.subheader("📥 Download Results")
+    csv = df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "📄 Download Full Results as CSV", 
+        csv, 
+        f"anti_echo_results.csv", 
+        mime="text/csv",
+        help="Download the complete analysis with all metrics"
+    )
 
-    if st.button("🔄 Analyze Another Article"):
-        st.rerun()
+if st.button("🔄 Analyze Another Article"):
+    st.session_state.source_confirmed = None
+    st.rerun()
