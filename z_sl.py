@@ -619,10 +619,8 @@ if uploaded:
     
     st.success(f"✓ Topic summary: {topic_summary}")
     
-    # Step 3.5: Extract canonical topics (needed for matching)
-    # The notebook does hierarchical clustering + anchor matching, but for now we store an empty list
-    # The scraper outputs canonical topics, but for user-uploaded articles we don't extract them
-    upload_topics_list = []
+    # Step 3.5: Extract canonical topics (will be populated after hierarchical clustering)
+    upload_topics_list = []  # Will be populated below
     
     # Step 4: Generate embeddings (scraper-style: base topic + stance)
     status_text.text("Step 4/5: Generating embeddings...")
@@ -636,13 +634,30 @@ if uploaded:
         elif len(sents) < 2:
             topic_vecs_list = [encode_topic(" ".join(sents))]
         else:
-            # Hierarchical clustering like notebook
-            emb = encode_topic(sents)
-            k = min(max(1, len(sents)//8), 8)
-            from sklearn.cluster import AgglomerativeClustering
-            labels = AgglomerativeClustering(n_clusters=k).fit_predict(emb)
-            segs = [" ".join([s for s, l in zip(sents, labels) if l == lab]) for lab in sorted(set(labels))]
-            topic_vecs_list = [encode_topic(seg) for seg in segs]
+        # Hierarchical clustering like notebook
+        emb = encode_topic(sents)
+        k = min(max(1, len(sents)//8), 8)
+        from sklearn.cluster import AgglomerativeClustering
+        labels = AgglomerativeClustering(n_clusters=k).fit_predict(emb)
+        segs = [" ".join([s for s, l in zip(sents, labels) if l == lab]) for lab in sorted(set(labels))]
+        topic_vecs_list = [encode_topic(seg) for seg in segs]
+        
+        # Match to topic anchors to extract canonical topics (like notebook lines 1199-1208)
+        all_labels = []
+        for vec in topic_vecs_list:
+            # Find best matching topic from anchors
+            max_sim = -1
+            best_label = "General / Miscellaneous"
+            for label, anchor_vec in topic_anchors.items():
+                sim = float(cosine_similarity([vec], [anchor_vec])[0][0])
+                if sim > max_sim:
+                    max_sim = sim
+                    best_label = label
+            all_labels.append(best_label)
+        
+        # Deduplicate and limit to top 8 (like notebook line 1208)
+        flat_topics = list(dict.fromkeys(all_labels))[:8]
+        upload_topics_list = flat_topics
         
         # Use first (primary) topic vector like notebook
         topic_vec = topic_vecs_list[0] if topic_vecs_list else encode_topic(text)
