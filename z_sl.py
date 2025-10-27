@@ -791,6 +791,7 @@ if uploaded:
         # FILTER: Check canonical topic overlap threshold (notebook line 2395)
         if canonical_overlap < CANONICAL_TOPIC_THRESHOLD:
             continue
+        passed_topic += 1
         
         # NOTEBOOK ORDER: summary similarity SECOND (match notebook line 2398-2411)
         emb_array = np.array(emb)
@@ -819,6 +820,7 @@ if uploaded:
         # FILTER: Check summary similarity threshold (notebook line 2411)
         if summary_similarity < SUMMARY_SIMILARITY_THRESHOLD:
             continue
+        passed_summary += 1
         
         # Match stance by article ID
         article_id_base = md.get("id", "").split("::")[0]
