@@ -20,6 +20,7 @@ import torch
 import nltk
 from collections import defaultdict
 from huggingface_hub import list_repo_files, hf_hub_download
+from itertools import product
 
 # Download NLTK data if needed
 try:
@@ -182,9 +183,20 @@ def load_environment():
     stance_model = SentenceTransformer(CONFIG["embeddings"]["stance_model"], device="cuda" if torch.cuda.is_available() else "cpu")
     client = chromadb.PersistentClient(path=str(CHROMA_PATH))
     
-    return CONFIG, topic_model, stance_model, client
+    # Load topic anchors for semantic topic matching
+    try:
+        anchors_path = CONFIG_DIR / "topic_anchors.npz"
+        if anchors_path.exists():
+            anchors_npz = np.load(anchors_path, allow_pickle=True)
+            topic_anchors = {k: anchors_npz[k] for k in anchors_npz.files}
+        else:
+            topic_anchors = None
+    except Exception as e:
+        topic_anchors = None
+    
+    return CONFIG, topic_model, stance_model, client, topic_anchors
 
-CONFIG, topic_model, stance_model, chroma_client = load_environment()
+CONFIG, topic_model, stance_model, chroma_client, topic_anchors = load_environment()
 
 # Get or create collections (not cached to allow for rebuilds)
 def get_collections():
@@ -692,12 +704,48 @@ if uploaded:
             except (ValueError, TypeError):
                 tone_db = bias_db
         
-        # Calculate topic overlap (simplified - using summary similarity as proxy)
+        # Calculate canonical topic overlap using Jaccard similarity (same as notebook)
+        def parse_topics(obj):
+            if obj is None:
+                return []
+            if isinstance(obj, list):
+                return [t.strip() for t in obj if t.strip()]
+            if isinstance(obj, str):
+                parts = [t.strip() for t in obj.split(";") if t.strip()]
+                if len(parts) == 1 and parts[0].startswith("["):
+                    try:
+                        parsed = json.loads(parts[0])
+                        if isinstance(parsed, list):
+                            return [t.strip() for t in parsed if isinstance(t, str)]
+                    except Exception:
+                        pass
+                return parts
+            return []
+        
         candidate_topics = md.get("topics_flat", [])
-        canonical_overlap = summary_similarity  # Simplified proxy
-        if isinstance(candidate_topics, list) and len(candidate_topics) > 0:
-            # Could improve by using actual topic matching here
-            pass
+        upload_topics = topics_flat if isinstance(topics_flat, list) else []
+        
+        A = set([t.strip().lower() for t in parse_topics(upload_topics)])
+        B = set([t.strip().lower() for t in parse_topics(candidate_topics)])
+        
+        if not A or not B:
+            canonical_overlap = 0.0
+        else:
+            jaccard = len(A & B) / len(A | B)
+            # Try semantic similarity if anchors available (like notebook)
+            if topic_anchors is not None:
+                sims = []
+                for a, b in product(A, B):
+                    if a in topic_anchors and b in topic_anchors:
+                        va, vb = topic_anchors[a], topic_anchors[b]
+                        sim = float(cosine_similarity([va], [vb])[0][0])
+                        sims.append(sim)
+                if sims:
+                    canonical_overlap = max(jaccard, max(sims))
+                else:
+                    canonical_overlap = jaccard
+            else:
+                canonical_overlap = jaccard
         
         bias_diff = abs(bias_uploaded - bias_db)
         tone_diff = abs(bias_uploaded - tone_db)
