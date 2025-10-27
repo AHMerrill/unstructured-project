@@ -664,6 +664,16 @@ if uploaded:
     passed_summary = 0
     passed_topic = 0
     
+    # Check if we need to encode old summaries
+    old_format_count = 0
+    for emb, md in zip(candidate_embeddings[:10], candidate_metadatas[:10]):  # Sample first 10
+        if len(emb) == 768 and md.get("openai_topic_summary"):
+            old_format_count += 1
+    if old_format_count > 0:
+        st.info(f"⚠️ Found {old_format_count}/10 sample vectors with old format (768-dim + text summary). These require encoding.")
+    else:
+        st.info("✓ All sample vectors appear to be in composite 1536-dim format (no encoding needed)")
+    
     progress_bar_search = st.progress(0)
     total_candidates = len(candidate_embeddings)
     
