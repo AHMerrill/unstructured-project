@@ -121,60 +121,67 @@ This tool helps you find **ideologically diverse coverage** of news stories you'
 
 ### 📊 How It Works
 
-1. **Upload & Source Bias Inference**
-   - Extracts text using `pdfplumber`, `BeautifulSoup`, or direct text parsing
-   - GPT-4o-mini infers the publication source from URL/domain or article content
+1. **Upload & Extract Article**
+   - Supports PDF, HTML, or plain text uploads
+   - Extracts text using `pdfplumber` (PDF), `BeautifulSoup` (HTML), or direct text parsing
+   - Infers publication source from URL/domain or article content
+
+2. **Source Confirmation & Bias Lookup**
    - You confirm or edit the inferred source name
-   - GPT-4o-mini classifies the outlet's political bias (-1.0 = far left, +1.0 = far right) by:
-     - Fuzzy matching against known outlets in the database (fuzzy matching score ≥85)
-     - If no match found, GPT infers bias from outlet characteristics (bias_family, bias_score, rationale)
+   - **Looks up the outlet's typical political bias** using a three-tier approach:
+     1. **Exact match** in `source_bias.json` database
+     2. **Fuzzy match** using rapidfuzz (≥80% similarity threshold)
+     3. **GPT-4o-mini inference** as fallback (asks about the outlet's reputation)
+   - Returns: `bias_score` (-1.0 = far left, +1.0 = far right) and `bias_family` (e.g., "center left")
 
-2. **Generate Topic Summary**
+3. **Generate Topic Summary with GPT**
    - GPT-4o-mini generates a one-sentence topic summary (max 20 words)
-   - Example: "Trump's plan to use unspent Defense Department funds to pay military personnel during a government shutdown violates the Constitution"
+   - This summary is encoded separately for semantic comparison
+   - Example: *"Trump's plan to use Defense funds during shutdown violates Constitution"*
 
-3. **Generate Topic Embedding**
-   - Hierarchical clustering of sentences into topical segments using `intfloat/e5-base-v2` (768 dim)
-   - Each segment creates a topic vector; multiple vectors per article capture different angles
-   - **Canonical topic extraction**: Matches each vector to topic anchors using cosine similarity
+4. **Generate Topic Embeddings**
+   - **Hierarchical clustering**: Splits article into sentences, clusters them into topical segments using `AgglomerativeClustering`
+   - Encodes each segment with `intfloat/e5-base-v2` (768-dim)
+   - **Canonical topic extraction**: Matches each segment vector to pre-computed topic anchors
      - Selects up to 5 most similar topics per vector (similarity threshold ≥0.4)
-     - Deduplicates across all vectors to get final canonical topic list (max 8 topics)
-   - Stores primary topic vector (768-dim) and GPT summary text (for semantic comparison)
+     - Deduplicates across all vectors to get final canonical topic list (max 8 topics total)
+   - Stores primary topic vector (768-dim) for retrieval
 
-4. **Generate Stance Embedding & Tone Matching**
-   - GPT-4o-mini classifies: political leaning, implied stance, argument summary
-   - These texts are concatenated and embedded with `all-mpnet-base-v2` (768 dim)
-   - **Tone Alignment Check**: Compares inferred tone score vs. source bias score
-     - If difference ≤0.3: ✓ Tone matches outlet bias (author aligns with publication)
-     - If difference >0.3: ⚠ Mismatch detected (author may deviate from outlet's usual stance)
+5. **Generate Stance Embedding & Check Tone Alignment**
+   - GPT-4o-mini classifies the **article's tone**: political leaning, implied stance, argument summary
+   - These texts are concatenated and embedded with `all-mpnet-base-v2` (768-dim)
+   - **Tone Alignment Check**: Compares the article's detected tone against the outlet's known bias
+     - Maps tone label (e.g., "center-left") to numeric score
+     - If `|outlet_bias - article_tone| ≤ 0.3`: ✅ **MATCH** (author aligns with outlet)
+     - If `|outlet_bias - article_tone| > 0.3`: ⚠️ **DIVERGENT** (author deviates; possible op-ed or guest column)
 
-5. **Semantic Search in ChromaDB**
-   - Retrieves ALL topic documents using `collection.get()` to fetch full corpus (no pre-filtering)
+6. **Semantic Search in ChromaDB**
+   - Retrieves ALL topic documents using `collection.get()` (full corpus, no pre-filtering)
    - **Groups vectors by article ID** (each article has multiple vectors from hierarchical clustering)
    - For each unique article in the database:
-     - Computes Jaccard similarity on canonical topic labels (must have ≥30% overlap)
-     - **Finds the OpenAI summary vector** if it exists (tagged as `topic_source == "openai_summary"`)
-     - **Uses that pre-encoded vector directly** for comparison (no re-encoding!)
-     - **Fallback**: uses first base topic vector if no OpenAI summary vector exists
-     - Compares your summary embedding vs. candidate's via cosine similarity (must have ≥80%)
-   - Filters candidates passing both thresholds
+     - **Canonical topic filter**: Computes Jaccard similarity on topic labels (must have ≥30% overlap)
+     - **Summary similarity**: Finds the OpenAI summary vector (tagged as `topic_source == "openai_summary"`)
+       - Uses that pre-encoded 768-dim vector directly (no re-encoding!)
+       - Fallback: uses first base topic vector if no OpenAI summary exists
+     - Computes cosine similarity vs. your uploaded summary (must be ≥80%)
+   - **Deduplicates**: Keeps only the best match per article ID
    - Result: One match per unique article (not per vector)
 
-6. **Anti-Echo Scoring & Results Display**
-   - **Two-stage computation** (matches notebook logic):
-     - First: Filter candidates by topic overlap (≥30%) and summary similarity (≥80%), deduplicate
-     - Second: For each matched article, compute full scoring metrics
-   - **Scoring metrics** extracted from database:
-     - Source bias score (outlet's political leaning)
-     - Tone score (author tone vs. outlet bias alignment)
-     - Stance similarity via cosine comparison of stance embeddings
-   - **Final anti-echo score**: (topic overlap × weight) + (summary similarity × weight) - (stance similarity × weight) - (bias difference × weight) - (tone difference × weight)
-   - Higher scores = better matches (same topic, different viewpoint)
-   - **Displays organized results** by category:
-     - Ideological spread overview (left vs. right outlets)
-     - Same topic/different source bias (sorted by bias_diff ↓, summary_sim ↓)
-     - Same topic/opposite stance (filtered by thresholds, sorted by stance_sim ↑, summary_sim ↓)
-     - Top anti-echo candidates (sorted by anti_echo_score ↓)
+7. **Anti-Echo Scoring & Results Display**
+   - **Two-stage computation**:
+     1. Filter candidates by topic overlap (≥30%) and summary similarity (≥80%)
+     2. For each matched article, retrieve stance embedding and compute scoring metrics:
+        - `canonical_overlap`: Jaccard similarity of topic labels
+        - `summary_similarity`: Cosine similarity of GPT summaries (768-dim)
+        - `stance_similarity`: Cosine similarity of stance embeddings (768-dim)
+        - `bias_diff`: Absolute difference in outlet bias scores
+        - `tone_diff`: Absolute difference in tone alignment
+   - **Final anti-echo score** = weighted combination (higher = better anti-echo match)
+   - **Displays organized results**:
+     - **Top Anti-Echo Candidates** (sorted by anti_echo_score ↓)
+     - **Ideological Spread Overview** (left vs. right outlets, top match details)
+     - **Same Topic — Different Source Bias** (sorted by bias_diff ↓, summary_sim ↓)
+     - **Same Topic — Opposite Stance** (filtered: summary_sim ≥0.8, topic_overlap ≥0.3; sorted by stance_sim ↑)
 
 ---
 
