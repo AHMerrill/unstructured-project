@@ -468,33 +468,72 @@ def infer_source_name(text):
         return source.capitalize()
     return "Unknown"
 
-def infer_bias_from_text(text, source_name, client):
-    """Infer bias score from article text using GPT and source"""
+def infer_source_bias(source_name, client):
+    """
+    Look up the source outlet's typical bias score.
+    Uses fuzzy matching against known sources, with GPT fallback.
+    Returns (bias_score, bias_family, method_used)
+    """
+    # Load source_bias.json if available
+    source_bias_path = CONFIG_DIR / "source_bias.json"
+    
+    if source_bias_path.exists():
+        try:
+            with open(source_bias_path, 'r') as f:
+                source_bias_db = json.load(f)
+            
+            # Normalize source name for lookup
+            normalized = source_name.lower().strip()
+            
+            # Try exact match first
+            if normalized in source_bias_db:
+                info = source_bias_db[normalized]
+                return float(info.get("bias_score", 0.0)), info.get("bias_family", "unknown"), "exact_match"
+            
+            # Try fuzzy match with rapidfuzz
+            from rapidfuzz import process, fuzz
+            matches = process.extract(normalized, source_bias_db.keys(), scorer=fuzz.ratio, limit=3)
+            if matches and matches[0][1] >= 80:  # 80% similarity threshold
+                best_match = matches[0][0]
+                info = source_bias_db[best_match]
+                return float(info.get("bias_score", 0.0)), info.get("bias_family", "unknown"), f"fuzzy_match:{best_match}"
+        except Exception as e:
+            st.caption(f"⚠️ Error loading source_bias.json: {e}")
+    
+    # Fallback: Ask GPT about the source outlet
     try:
-        prompt = f"""Analyze this article and determine its political bias score.
-        Article is from: {source_name}
+        prompt = f"""What is the typical political bias of the news outlet "{source_name}"?
         
-        Return a number between -1.0 (far left) and 1.0 (far right).
-        
-        Article excerpt: {text[:1000]}
-        
-        Return only the numeric bias score (e.g., -0.3, 0.5, etc.):"""
+Return JSON with:
+- bias_score: number between -1.0 (far left) and 1.0 (far right)
+- bias_family: one of [progressive left, center left, center, center right, conservative right, libertarian right]
+- explanation: one sentence about the outlet's typical coverage
+
+Examples:
+- New York Times: {{"bias_score": -0.4, "bias_family": "center left", "explanation": "Mainstream center-left outlet with some progressive opinion content"}}
+- Fox News: {{"bias_score": 0.8, "bias_family": "conservative right", "explanation": "Conservative news and commentary"}}
+- Reuters: {{"bias_score": 0.0, "bias_family": "center", "explanation": "International news wire service, generally neutral"}}
+"""
         
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=10,
+            max_tokens=150,
             temperature=0.3
         )
-        score_str = response.choices[0].message.content.strip()
-        # Extract first number
-        match = re.search(r'-?\d+\.?\d*', score_str)
-        if match:
-            score = float(match.group())
-            return max(-1.0, min(1.0, score))  # Clamp to [-1, 1]
-    except:
-        pass
-    return 0.0  # Neutral fallback
+        
+        raw = response.choices[0].message.content.strip()
+        cleaned = raw.strip('```json').strip('```').strip()
+        data = json.loads(cleaned)
+        
+        bias_score = float(data.get("bias_score", 0.0))
+        bias_family = data.get("bias_family", "unknown")
+        
+        return max(-1.0, min(1.0, bias_score)), bias_family, "gpt_inference"
+        
+    except Exception as e:
+        st.caption(f"⚠️ GPT bias inference failed: {e}")
+        return 0.0, "unknown", "fallback"
 
 def infer_stance_classification(text, source_name, client):
     """Generate stance classification text for embedding. Returns (stance_text, stance_data)"""
@@ -620,30 +659,42 @@ if uploaded:
     
     st.success(f"✓ Source: **{st.session_state.source_confirmed}**")
     
-    # Step 2: Infer bias (with GPT detailed output like notebook)
-    status_text.text("Step 2/5: Inferring article bias...")
+    # Step 2: Infer source outlet bias (not article bias)
+    status_text.text("Step 2/5: Looking up source outlet bias...")
     progress_bar.progress(30)
     
-    with st.spinner("Inferring article bias..."):
-        bias_uploaded = infer_bias_from_text(text, st.session_state.source_confirmed, openai_client)
+    with st.spinner("Inferring source bias..."):
+        bias_uploaded, bias_family, bias_method = infer_source_bias(st.session_state.source_confirmed, openai_client)
     
     # Show detailed bias inference (like notebook lines 759, 1740-1754)
-    st.success(f"✓ Detected bias: **{interpret_bias(bias_uploaded)}** (score: {bias_uploaded:.2f})")
+    st.success(f"✓ Source bias: **{bias_family.title()}** (score: {bias_uploaded:.2f})")
     
     # Show source bias explanation
-    bias_label = interpret_bias(bias_uploaded)
     with st.expander("📊 Source Bias Analysis", expanded=True):
+        method_text = {
+            "exact_match": "Found in source database",
+            "gpt_inference": "Inferred by GPT-4o-mini",
+            "fallback": "Using neutral default"
+        }
+        method_display = method_text.get(bias_method.split(":")[0], bias_method)
+        
+        if "fuzzy_match:" in bias_method:
+            matched_name = bias_method.split(":")[1]
+            method_display = f"Matched to '{matched_name}' in database"
+        
         st.markdown(f"""
-**{st.session_state.source_confirmed}** is classified as **{bias_label}** with a bias score of **{bias_uploaded:.2f}**.
+**{st.session_state.source_confirmed}** is classified as **{bias_family.title()}** with a bias score of **{bias_uploaded:.2f}**.
 
-This score represents the outlet's typical political leaning:
-- **-1.0 to -0.6**: Progressive / Left (e.g., Vox, MSNBC)
-- **-0.6 to -0.2**: Center-Left (e.g., NPR, BBC)
+*Method: {method_display}*
+
+This score represents the outlet's **typical political leaning**:
+- **-1.0 to -0.6**: Progressive / Left (e.g., Vox, MSNBC, The Guardian)
+- **-0.6 to -0.2**: Center-Left (e.g., NPR, BBC, New York Times)
 - **-0.2 to +0.2**: Center / Neutral (e.g., Reuters, AP)
 - **+0.2 to +0.6**: Center-Right (e.g., WSJ, The Economist)
 - **+0.6 to +1.0**: Conservative / Right (e.g., Fox News, Daily Caller)
 
-We'll compare this article's tone to the outlet's typical bias to see if they align.
+Next, we'll analyze **this specific article's tone** to see if it aligns with the outlet's typical bias.
         """)
     
     # Step 3: Generate topic summary with GPT
@@ -739,20 +790,27 @@ We'll compare this article's tone to the outlet's typical bias to see if they al
         # Now check tone alignment with actual tone score
         article_tone = stance_data.get("political_leaning", "unknown").lower()
         tone_score_mapping = {
-            "progressive left": -0.8, "center left": -0.4, "center": 0.0,
-            "center right": 0.4, "conservative right": 0.8, "libertarian right": 0.6
+            "progressive left": -0.8, "center-left": -0.4, "center left": -0.4, "center": 0.0,
+            "center-right": 0.4, "center right": 0.4, "conservative right": 0.8, 
+            "libertarian right": 0.6, "unknown": 0.0
         }
-        tone_score = tone_score_mapping.get(article_tone, 0.0)
-        tone_match = abs(bias_uploaded - tone_score) <= 0.3
+        article_tone_score = tone_score_mapping.get(article_tone, 0.0)
+        tone_match = abs(bias_uploaded - article_tone_score) <= 0.3
         
-        with st.expander("🎭 Tone Alignment Analysis", expanded=True):
+        with st.expander("🎭 Tone Alignment Check", expanded=True):
+            match_emoji = "✅" if tone_match else "⚠️"
+            match_text = "**MATCH**" if tone_match else "**DIVERGENT**"
+            
             st.markdown(f"""
-**Article Tone:** {stance_data.get("political_leaning", "unknown").title()}  
-**Outlet Bias:** {interpret_bias(bias_uploaded)} (score: {bias_uploaded:.2f})  
-**Article Tone Score:** {tone_score:.2f}  
-**Alignment:** {'✓ **Matches** - This article aligns with the outlet\'s typical bias' if tone_match else '⚠️ **Mismatch** - This article diverges from the outlet\'s typical stance'}
+{match_emoji} **Alignment Status:** {match_text}
 
-{"This article's tone is consistent with what we'd expect from " + st.session_state.source_confirmed + "." if tone_match else "Interesting! This article takes a different angle than " + st.session_state.source_confirmed + " usually does. This could be an op-ed, guest column, or coverage of a contrarian view."}
+**Outlet's Typical Bias:** {bias_family.title()} (score: {bias_uploaded:.2f})  
+**This Article's Tone:** {stance_data.get("political_leaning", "unknown").title()} (score: {article_tone_score:.2f})  
+**Difference:** {abs(bias_uploaded - article_tone_score):.2f} (threshold: 0.30)
+
+---
+
+{f"This article's tone is **consistent** with what we'd expect from **{st.session_state.source_confirmed}**. The author's political leaning aligns with the outlet's typical bias." if tone_match else f"Interesting! This article takes a **different angle** than **{st.session_state.source_confirmed}** typically publishes. This could indicate an op-ed, guest column, contrarian piece, or coverage presenting an opposing viewpoint. These divergent pieces are valuable for understanding how outlets occasionally platform perspectives outside their usual editorial stance."}
             """)
         
         # Embed the stance classification
