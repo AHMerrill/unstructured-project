@@ -705,6 +705,11 @@ if uploaded:
         for t in flat_topics:
             st.markdown(f"- {t}")
         
+        # Debug: Show topic extraction details
+        st.caption(f"📋 Total canonical topics extracted: {len(flat_topics)}")
+        if len(topic_vecs_list) > 1:
+            st.caption(f"📊 Generated {len(topic_vecs_list)} topic vectors from hierarchical clustering")
+        
         # Use first (primary) topic vector like notebook
         topic_vec = topic_vecs_list[0] if topic_vecs_list else encode_topic(text)
         if topic_vec.ndim == 2:
@@ -869,6 +874,11 @@ if uploaded:
     progress_bar_search.progress(1.0)
 
     st.caption(f"✓ {passed_summary} passed summary threshold ≥ {SUMMARY_SIMILARITY_THRESHOLD}, {passed_topic} passed topic threshold ≥ {CANONICAL_TOPIC_THRESHOLD}, {len(all_matches)} before deduplication")
+    
+    # Debug: Show a sample of match details
+    if all_matches:
+        sample_match = all_matches[0]
+        st.caption(f"📊 Sample match: {sample_match.get('title', 'Untitled')[:50]}... (overlap: {sample_match.get('canonical_overlap', 0):.2f}, summary sim: {sample_match.get('summary_similarity', 0):.2f})")
     
     # Deduplicate by article_id, keep best match (notebook line 2431-2437)
     best_matches = {}
