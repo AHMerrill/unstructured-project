@@ -149,12 +149,14 @@ This tool helps you find **ideologically diverse coverage** of news stories you'
      - If difference >0.3: ⚠ Mismatch detected (author may deviate from outlet's usual stance)
 
 5. **Semantic Search in ChromaDB**
-   - Retrieves ALL topic documents from the database (not pre-filtered by ChromaDB query)
-   - Pre-encodes all unique candidate summaries to optimize performance
-   - For each candidate:
+   - Retrieves ALL topic documents using `collection.get()` to fetch full corpus (no pre-filtering)
+   - Pre-encodes all unique candidate summaries once to avoid repeated encoding in the loop
+   - For each candidate vector in the database:
      - Computes Jaccard similarity on canonical topic labels (must have ≥30% overlap)
-     - Encodes candidate's GPT summary text if available, otherwise uses base topic vector
-     - Compares OpenAI summary embeddings via cosine similarity (must have ≥80% similarity)
+     - **If the vector is tagged as OpenAI summary** (`topic_source == "openai_summary"`): uses it directly
+     - **If it's a base topic vector**: checks for summary text in metadata and uses cached encoding
+     - **Fallback**: compares base topic vectors if no summary available
+     - Compares your summary embedding vs. candidate's via cosine similarity (must have ≥80%)
    - Filters candidates passing both thresholds
    - Deduplicates to keep best match per unique article ID (by highest summary similarity)
 
@@ -847,12 +849,21 @@ if uploaded:
             summary_similarity = cosine_similarity(uploaded_summary_vec.reshape(1,-1), candidate_summary_vec.reshape(1,-1))[0][0]
             old_summary = "(new format)"
         else:
-            old_summary = md.get("openai_topic_summary", "")
-            if old_summary and old_summary in encoded_summaries_cache:
-                candidate_summary_vec = encoded_summaries_cache[old_summary]
+            # Check if THIS vector IS the OpenAI summary (already encoded by scraper)
+            if md.get("topic_source") == "openai_summary":
+                # Use the vector directly - it's already the encoded summary!
+                candidate_summary_vec = emb_array
                 summary_similarity = cosine_similarity(uploaded_summary_vec.reshape(1,-1), candidate_summary_vec.reshape(1,-1))[0][0]
+                old_summary = "(openai_summary_vector)"
             else:
-                summary_similarity = cosine_similarity(topic_vec.reshape(1,-1), emb_array.reshape(1,-1))[0][0]
+                # This is a base topic vector, check for summary text in metadata
+                old_summary = md.get("openai_topic_summary", "")
+                if old_summary and old_summary in encoded_summaries_cache:
+                    candidate_summary_vec = encoded_summaries_cache[old_summary]
+                    summary_similarity = cosine_similarity(uploaded_summary_vec.reshape(1,-1), candidate_summary_vec.reshape(1,-1))[0][0]
+                else:
+                    # Fallback: compare base topic vectors
+                    summary_similarity = cosine_similarity(topic_vec.reshape(1,-1), emb_array.reshape(1,-1))[0][0]
 
         
         # FILTER: Check summary similarity threshold (notebook line 2411)
