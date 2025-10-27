@@ -699,20 +699,6 @@ if uploaded:
     if uploaded_summary_vec.ndim == 2:
         uploaded_summary_vec = uploaded_summary_vec.flatten()
     
-    # Pre-encode ALL candidate summaries ONCE (batch encode)
-    candidate_summaries = [md.get("openai_topic_summary", "") for md in candidate_metadatas]
-    unique_summaries = list(set(s for s in candidate_summaries if s))
-    
-    # Batch encode unique summaries
-    st.caption(f"Pre-encoding {len(unique_summaries)} unique summaries from database...")
-    encoded_summaries = {}
-    if unique_summaries:
-        batch_vecs = topic_model.encode(unique_summaries, normalize_embeddings=True, show_progress_bar=True)
-        for summ, vec in zip(unique_summaries, batch_vecs):
-            if vec.ndim == 2:
-                vec = vec.flatten()
-            encoded_summaries[summ] = vec
-    
     st.caption(f"Checking {len(candidate_embeddings)} topic vectors from database...")
     passed_summary = 0
     passed_topic = 0
@@ -779,11 +765,13 @@ if uploaded:
         # NOTEBOOK ORDER: summary similarity SECOND (match notebook line 2398-2411)
         emb_array = np.array(emb)
         
-        # Use pre-encoded summary if available
+        # Match notebook logic exactly (lines 2371-2383)
         old_summary = md.get("openai_topic_summary", "")
-        if old_summary and old_summary in encoded_summaries:
-            # Use pre-encoded candidate summary
-            candidate_summary_vec = encoded_summaries[old_summary]
+        if old_summary:
+            # Encode candidate summary text and compare with uploaded summary
+            candidate_summary_vec = topic_model.encode(old_summary, normalize_embeddings=True, show_progress_bar=False)
+            if candidate_summary_vec.ndim == 2:
+                candidate_summary_vec = candidate_summary_vec.flatten()
             summary_similarity = float(
                 cosine_similarity(
                     uploaded_summary_vec.reshape(1, -1),
@@ -820,12 +808,18 @@ if uploaded:
         bias_db = 0.0
         tone_db = 0.0
         
-        # Get bias from stance metadata
+        # Get bias from stance metadata (like notebook lines 2421-2429)
         if s_md_stance:
             try:
                 bias_db = float(s_md_stance.get("bias_score", 0.0))
             except (ValueError, TypeError):
-                pass
+                # Try parsing from nested JSON like notebook
+                try:
+                    source_bias_str = s_md_stance.get("source_bias", "{}")
+                    source_bias_json = json.loads(source_bias_str)
+                    bias_db = float(source_bias_json.get("bias_score", 0.0))
+                except:
+                    pass
             
             try:
                 tone_db = float(s_md_stance.get("tone_score", bias_db))
