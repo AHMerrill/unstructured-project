@@ -699,6 +699,17 @@ if uploaded:
     if uploaded_summary_vec.ndim == 2:
         uploaded_summary_vec = uploaded_summary_vec.flatten()
     
+    # Pre-encode ALL unique candidate summaries ONCE (avoid re-encoding in loop)
+    st.caption(f"Pre-encoding candidate summaries...")
+    unique_summaries = list(set(md.get("openai_topic_summary", "") for md in candidate_metadatas if md.get("openai_topic_summary")))
+    encoded_summaries_cache = {}
+    if unique_summaries:
+        with st.spinner(f"Encoding {len(unique_summaries)} unique summaries..."):
+            batch_vecs = topic_model.encode(unique_summaries, normalize_embeddings=True, show_progress_bar=True)
+            for summ, vec in zip(unique_summaries, batch_vecs):
+                if vec.ndim == 2:
+                    vec = vec.flatten()
+                encoded_summaries_cache[summ] = vec
     st.caption(f"Checking {len(candidate_embeddings)} topic vectors from database...")
     passed_summary = 0
     passed_topic = 0
@@ -767,11 +778,9 @@ if uploaded:
         
         # Match notebook logic exactly (lines 2371-2383)
         old_summary = md.get("openai_topic_summary", "")
-        if old_summary:
-            # Encode candidate summary text and compare with uploaded summary
-            candidate_summary_vec = topic_model.encode(old_summary, normalize_embeddings=True, show_progress_bar=False)
-            if candidate_summary_vec.ndim == 2:
-                candidate_summary_vec = candidate_summary_vec.flatten()
+        if old_summary and old_summary in encoded_summaries_cache:
+            # Use pre-encoded candidate summary from cache
+            candidate_summary_vec = encoded_summaries_cache[old_summary]
             summary_similarity = float(
                 cosine_similarity(
                     uploaded_summary_vec.reshape(1, -1),
