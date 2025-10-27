@@ -673,6 +673,10 @@ if uploaded:
     # Extract uploaded summary vector
     uploaded_summary = topic_vec[768:] if len(topic_vec) == 1536 else topic_vec
     
+    st.write(f"Debug: Checking {len(candidate_embeddings)} candidates...")
+    passed_summary = 0
+    passed_topic = 0
+    
     for i, (emb, md) in enumerate(zip(candidate_embeddings, candidate_metadatas)):
         # Calculate summary similarity (like notebook line 2401-2407)
         emb_array = np.array(emb)
@@ -687,6 +691,7 @@ if uploaded:
         # FILTER: Check summary similarity threshold (like notebook line 2411)
         if summary_similarity < SUMMARY_SIMILARITY_THRESHOLD:
             continue
+        passed_summary += 1
         
         # Match stance by article ID
         article_id_base = md.get("id", "").split("::")[0]
@@ -771,6 +776,7 @@ if uploaded:
         # FILTER: Check canonical topic overlap threshold (like notebook line 2395)
         if canonical_overlap < CANONICAL_TOPIC_THRESHOLD:
             continue
+        passed_topic += 1
         
         bias_diff = abs(bias_uploaded - bias_db)
         tone_diff = abs(bias_uploaded - tone_db)
@@ -796,14 +802,17 @@ if uploaded:
             "url": md.get("url", "")
         })
 
+    st.write(f"Debug: {passed_summary} passed summary threshold, {passed_topic} passed topic threshold, {len(all_matches)} total matches")
+
     progress_bar.progress(100)
     status_text.text("✓ Analysis complete!")
-
-    df = pd.DataFrame(all_matches).sort_values("anti_echo_score", ascending=False).head(100)
     
-    if df.empty:
-        st.warning("No articles matched the search criteria.")
+    if not all_matches:
+        st.warning("⚠️ **No articles matched the search criteria after filtering.**")
+        st.info("This could mean:\n1. No articles in the database share similar topics\n2. Thresholds are too strict (canonical ≥ 0.3, summary ≥ 0.8)")
         st.stop()
+    
+    df = pd.DataFrame(all_matches).sort_values("anti_echo_score", ascending=False).head(100)
     
     st.markdown("---")
     
