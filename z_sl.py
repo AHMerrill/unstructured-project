@@ -665,10 +665,28 @@ if uploaded:
     # For now, use empty topic list for uploaded article (could improve by extracting topics)
     upload_topics_list = []
 
+    # Constants from notebook
+    CANONICAL_TOPIC_THRESHOLD = 0.3
+    SUMMARY_SIMILARITY_THRESHOLD = 0.8
+
     all_matches = []
+    # Extract uploaded summary vector
+    uploaded_summary = topic_vec[768:] if len(topic_vec) == 1536 else topic_vec
+    
     for i, (emb, md) in enumerate(zip(candidate_embeddings, candidate_metadatas)):
-        # Calculate similarities - embeddings in DB are 768 dim
-        summary_similarity = float(cosine_similarity([query_vec], [emb])[0][0])
+        # Calculate summary similarity (like notebook line 2401-2407)
+        emb_array = np.array(emb)
+        if len(emb_array) == 1536:
+            # New composite format: compare summary portions
+            candidate_summary_vec = emb_array[768:]
+            summary_similarity = float(cosine_similarity(uploaded_summary.reshape(1, -1), candidate_summary_vec.reshape(1, -1))[0][0])
+        else:
+            # Old 768-dim format: compare base embeddings
+            summary_similarity = float(cosine_similarity(uploaded_summary.reshape(1, -1), emb_array.reshape(1, -1))[0][0])
+        
+        # FILTER: Check summary similarity threshold (like notebook line 2411)
+        if summary_similarity < SUMMARY_SIMILARITY_THRESHOLD:
+            continue
         
         # Match stance by article ID
         article_id_base = md.get("id", "").split("::")[0]
@@ -749,6 +767,10 @@ if uploaded:
                     canonical_overlap = jaccard
             else:
                 canonical_overlap = jaccard
+        
+        # FILTER: Check canonical topic overlap threshold (like notebook line 2395)
+        if canonical_overlap < CANONICAL_TOPIC_THRESHOLD:
+            continue
         
         bias_diff = abs(bias_uploaded - bias_db)
         tone_diff = abs(bias_uploaded - tone_db)
