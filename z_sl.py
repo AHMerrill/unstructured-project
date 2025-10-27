@@ -618,9 +618,12 @@ if uploaded:
     progress_bar.progress(75)
     
     with st.spinner("Searching database..."):
+        # Database has 768-dim embeddings, query with just the base topic embedding
+        query_vec = topic_vec[:768] if len(topic_vec) > 768 else topic_vec
+        
         # Get top candidates using similarity search
         search_results = topic_coll.query(
-            query_embeddings=[topic_vec.tolist()],
+            query_embeddings=[query_vec.tolist()],
             n_results=min(100, topic_coll.count()),
             include=["embeddings", "metadatas"]
         )
@@ -644,8 +647,10 @@ if uploaded:
 
     all_matches = []
     for i, (emb, md) in enumerate(zip(candidate_embeddings, candidate_metadatas)):
-        # Calculate similarities
-        summary_similarity = float(cosine_similarity([topic_vec], [emb])[0][0])
+        # Calculate similarities - use first 768 dims for consistency
+        comp_emb = emb[:768] if len(emb) > 768 else emb
+        comp_vec = query_vec[:768] if len(query_vec) > 768 else query_vec
+        summary_similarity = float(cosine_similarity([comp_vec], [comp_emb])[0][0])
         
         # Match stance by article ID
         article_id_base = md.get("id", "").split("::")[0]
