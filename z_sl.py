@@ -68,27 +68,27 @@ st.sidebar.markdown("""
 
 w_T_canonical = st.sidebar.slider(
     "w_T_canonical (Topic Overlap Weight)", 
-    0.0, 10.0, 0.5, 0.1,
+    0.0, 50.0, 0.5, 0.5,
     help="Weight for canonical topic overlap similarity"
 )
 w_T_summary = st.sidebar.slider(
     "w_T_summary (Summary Similarity Weight)", 
-    0.0, 10.0, 10.0, 0.1,
+    0.0, 50.0, 10.0, 0.5,
     help="Weight for semantic summary similarity (most important)"
 )
 w_S = st.sidebar.slider(
     "w_S (Stance Similarity Penalty)", 
-    0.0, 10.0, 1.0, 0.1,
+    0.0, 50.0, 1.0, 0.5,
     help="Penalty for similar stances (lower = more different stances)"
 )
 w_B = st.sidebar.slider(
     "w_B (Bias Difference Penalty)", 
-    0.0, 10.0, 0.8, 0.1,
+    0.0, 50.0, 0.8, 0.5,
     help="Penalty for similar bias scores"
 )
 w_Tone = st.sidebar.slider(
     "w_Tone (Tone Difference Penalty)", 
-    0.0, 10.0, 0.3, 0.1,
+    0.0, 50.0, 0.3, 0.5,
     help="Penalty for similar tones"
 )
 
@@ -171,20 +171,28 @@ def load_environment():
     stance_model = SentenceTransformer(CONFIG["embeddings"]["stance_model"], device="cuda" if torch.cuda.is_available() else "cpu")
     client = chromadb.PersistentClient(path=str(CHROMA_PATH))
     
-    # Try to get collections, create if they don't exist
-    try:
-        topic_coll = client.get_collection(CONFIG["chroma_collections"]["topic"])
-    except Exception:
-        topic_coll = client.create_collection(CONFIG["chroma_collections"]["topic"], metadata={"hnsw:space": "cosine"})
-    
-    try:
-        stance_coll = client.get_collection(CONFIG["chroma_collections"]["stance"])
-    except Exception:
-        stance_coll = client.create_collection(CONFIG["chroma_collections"]["stance"], metadata={"hnsw:space": "cosine"})
-    
-    return CONFIG, topic_model, stance_model, topic_coll, stance_coll
+    return CONFIG, topic_model, stance_model, client
 
-CONFIG, topic_model, stance_model, topic_coll, stance_coll = load_environment()
+CONFIG, topic_model, stance_model, chroma_client = load_environment()
+
+# Get or create collections (not cached to allow for rebuilds)
+def get_collections():
+    topic_name = CONFIG["chroma_collections"]["topic"]
+    stance_name = CONFIG["chroma_collections"]["stance"]
+    
+    try:
+        topic_coll = chroma_client.get_collection(topic_name)
+    except Exception:
+        topic_coll = chroma_client.create_collection(topic_name, metadata={"hnsw:space": "cosine"})
+    
+    try:
+        stance_coll = chroma_client.get_collection(stance_name)
+    except Exception:
+        stance_coll = chroma_client.create_collection(stance_name, metadata={"hnsw:space": "cosine"})
+    
+    return topic_coll, stance_coll
+
+topic_coll, stance_coll = get_collections()
 
 # Check if database is empty and rebuild if needed
 def rebuild_chromadb_from_hf(config_dict):
@@ -192,6 +200,8 @@ def rebuild_chromadb_from_hf(config_dict):
     HF_REPO = config_dict.get("hf_dataset_id")
     if not HF_REPO:
         return False, "No HF dataset ID in config"
+    
+    st.info(f"📥 Attempting to rebuild from: {HF_REPO}")
     
     topic_name = config_dict["chroma_collections"]["topic"]
     stance_name = config_dict["chroma_collections"]["stance"]
@@ -215,8 +225,28 @@ def rebuild_chromadb_from_hf(config_dict):
         stance_coll_new = client.create_collection(stance_name, metadata={"hnsw:space": "cosine"})
         
         # Download and load data
+        st.info(f"Fetching files from {HF_REPO}...")
         files = list(list_repo_files(HF_REPO, repo_type="dataset"))
+        
+        st.info(f"📁 Found {len(files)} files in repository")
+        
+        # Show first few files for debugging
+        if files:
+            st.write(f"Sample files: {files[:3]}")
+        
+        if not files:
+            return False, f"No files found in {HF_REPO}"
+        
         batches = sorted({"/".join(f.split("/")[:2]) for f in files if f.startswith("batches/")})
+        
+        st.info(f"📦 Found {len(batches)} batch directories")
+        
+        if not batches:
+            # Show what files we actually found
+            unique_dirs = sorted(set(f.split("/")[0] for f in files if "/" in f))
+            return False, f"No batches found in {HF_REPO}. Found directories: {unique_dirs[:10]}"
+        
+        st.info(f"✅ Processing {len(batches)} batches...")
         
         topic_total = stance_total = 0
         
@@ -244,8 +274,10 @@ def rebuild_chromadb_from_hf(config_dict):
         
         seen_topic_ids, seen_stance_ids = set(), set()
         
-        for batch in batches:
+        for idx, batch in enumerate(batches, 1):
             try:
+                st.info(f"Processing batch {idx}/{len(batches)}: {batch.split('/')[-1]}...")
+                
                 topic_npz = hf_hub_download(HF_REPO, f"{batch}/embeddings_topic.npz", repo_type="dataset")
                 stance_npz = hf_hub_download(HF_REPO, f"{batch}/embeddings_stance.npz", repo_type="dataset")
                 meta_topic = hf_hub_download(HF_REPO, f"{batch}/metadata_topic.jsonl", repo_type="dataset")
@@ -289,17 +321,36 @@ def rebuild_chromadb_from_hf(config_dict):
                 stance_total += len(s_records)
                 
             except Exception as e:
-                st.write(f"Warning: {batch} failed: {e}")
+                st.warning(f"⚠️ Batch {batch} failed: {type(e).__name__}: {e}")
                 continue
         
-        return True, f"Rebuilt: {topic_total} topic, {stance_total} stance vectors"
+        if topic_total == 0 and stance_total == 0:
+            return False, f"Rebuild completed but no vectors were added. Check if {HF_REPO} has data."
+        
+        return True, f"Rebuilt: {topic_total} topic vectors, {stance_total} stance vectors from {len(batches)} batches"
         
     except Exception as e:
-        return False, f"Rebuild failed: {type(e).__name__}: {e}"
+        import traceback
+        return False, f"Rebuild failed: {type(e).__name__}: {e}\n{traceback.format_exc()}"
 
 # Check if database is empty
-topic_count = topic_coll.count()
-stance_count = stance_coll.count()
+try:
+    topic_count = topic_coll.count()
+    stance_count = stance_coll.count()
+except Exception as e:
+    # Collections don't exist or can't be accessed, rebuild needed
+    st.warning("⚠️ **ChromaDB is empty or needs initialization** - Rebuilding from Hugging Face...")
+    with st.spinner("Downloading embeddings from Hugging Face. This may take a few minutes..."):
+        success, message = rebuild_chromadb_from_hf(CONFIG)
+        if success:
+            st.success(f"✓ {message}")
+            st.rerun()  # Reload with new data
+        else:
+            st.error(f"✗ {message}")
+            st.stop()
+    # This code won't execute if st.rerun() is called, but for safety:
+    topic_count = 0
+    stance_count = 0
 
 if topic_count == 0 or stance_count == 0:
     st.warning("⚠️ **ChromaDB is empty** - Rebuilding from Hugging Face...")
