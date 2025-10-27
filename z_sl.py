@@ -19,6 +19,7 @@ import chromadb
 import torch
 import nltk
 from collections import defaultdict
+from huggingface_hub import list_repo_files, hf_hub_download
 
 # Download NLTK data if needed
 try:
@@ -39,38 +40,122 @@ for p in [TMP, CHROMA_PATH]:
     p.mkdir(parents=True, exist_ok=True)
 
 # ------------------------------------------------------------
+# SIDEBAR SETTINGS (NEEDED FIRST FOR OTHER PARTS)
+# ------------------------------------------------------------
+st.sidebar.header("🔑 Setup")
+
+# OpenAI API Key
+api_key_input = st.sidebar.text_input(
+    "OpenAI API Key", 
+    type="password",
+    help="Required for bias inference and article analysis",
+    value=os.environ.get("OPENAI_API_KEY", "")
+)
+
+if api_key_input:
+    os.environ["OPENAI_API_KEY"] = api_key_input
+    openai_client = OpenAI(api_key=api_key_input)
+else:
+    openai_client = None
+
+st.sidebar.markdown("---")
+
+# Tunable Parameters from Stage 6
+st.sidebar.subheader("⚙️ Tunable Parameters")
+st.sidebar.markdown("""
+**Adjust these weights to control the anti-echo scoring formula:**
+""")
+
+w_T_canonical = st.sidebar.slider(
+    "w_T_canonical (Topic Overlap Weight)", 
+    0.0, 10.0, 0.5, 0.1,
+    help="Weight for canonical topic overlap similarity"
+)
+w_T_summary = st.sidebar.slider(
+    "w_T_summary (Summary Similarity Weight)", 
+    0.0, 10.0, 10.0, 0.1,
+    help="Weight for semantic summary similarity (most important)"
+)
+w_S = st.sidebar.slider(
+    "w_S (Stance Similarity Penalty)", 
+    0.0, 10.0, 1.0, 0.1,
+    help="Penalty for similar stances (lower = more different stances)"
+)
+w_B = st.sidebar.slider(
+    "w_B (Bias Difference Penalty)", 
+    0.0, 10.0, 0.8, 0.1,
+    help="Penalty for similar bias scores"
+)
+w_Tone = st.sidebar.slider(
+    "w_Tone (Tone Difference Penalty)", 
+    0.0, 10.0, 0.3, 0.1,
+    help="Penalty for similar tones"
+)
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("**Formula:** `(topic_weight × overlap) + (summary_weight × similarity) - (stance_penalty × stance_sim) - (bias_penalty × bias_diff) - (tone_penalty × tone_diff)`")
+
+# ------------------------------------------------------------
 # HEADER & INTRODUCTION
 # ------------------------------------------------------------
 st.title("📰 Anti-Echo Chamber — Ideological Diversity Finder")
 
 intro_text = """
-This tool analyzes **news articles** to find *ideologically contrasting coverage* of the same event or topic.
+### 🎯 What This Tool Does
 
-It compares uploaded articles against a database of pre-embedded articles using topic, stance, and bias embeddings.
+This tool helps you find **ideologically diverse coverage** of news stories you're reading. 
 
----
+**The Problem:** Many people only see news from sources aligned with their views, creating "echo chambers" that reinforce existing beliefs.
 
-### What it does
-1. Uploads and parses your article (PDF, TXT, or HTML)
-2. Infers the **source bias** (via lookup or GPT fallback)
-3. Creates **topic** and **stance embeddings**
-4. Searches **ChromaDB** for articles with similar topics
-5. Computes a weighted **Anti-Echo Score** for ideological diversity
+**The Solution:** Upload any news article, and this tool will find articles from different ideological perspectives that cover the **same topic or event**.
 
 ---
 
-### Anti-Echo Scoring Formula
+### 📊 How It Works
 
-The score rewards topical similarity but penalizes stance alignment and ideological similarity:
+1. **Upload Your Article** (PDF, TXT, or HTML)
+   - The tool extracts and analyzes the text
+   
+2. **Analyze Bias & Stance**
+   - Uses AI to determine the article's political bias
+   - Creates semantic embeddings for topic and stance
+   
+3. **Search Database**
+   - Finds articles covering similar topics from hundreds of news sources
+   
+4. **Score for Diversity**
+   - Calculates an "Anti-Echo Score" that favors:
+     - ✅ Same topic/event (high similarity)
+     - ✅ Different political stance (low similarity)
+     - ✅ Different ideological bias (large difference)
+   
+5. **Return Results**
+   - Shows you the most ideologically diverse coverage
+   - Download results as CSV
 
-anti_echo_score =
-(w_T_canonical × canonical_overlap)
-+ (w_T_summary × summary_similarity)
-− (w_S × stance_similarity)
-− (w_B × bias_diff)
-− (w_Tone × tone_diff)
+---
 
-Higher scores = same topic, **different viewpoint**.
+### 🧮 Scoring Formula
+
+**Higher scores = better matches** (same topic, different viewpoint):
+
+```
+anti_echo_score = 
+  (w_T_canonical × canonical_overlap)
+  + (w_T_summary × summary_similarity)  
+  - (w_S × stance_similarity)
+  - (w_B × bias_diff)
+  - (w_Tone × tone_diff)
+```
+
+**Variables:**
+- `canonical_overlap`: Topic label overlap (Jaccard similarity)
+- `summary_similarity`: Semantic similarity of article summaries
+- `stance_similarity`: How similar the political stance is
+- `bias_diff`: Difference in political bias scores (-1.0 to 1.0)
+- `tone_diff`: Difference in tone/sentiment
+
+Adjust the weights in the sidebar to tune the algorithm!
 """
 
 st.markdown(intro_text)
@@ -101,16 +186,131 @@ def load_environment():
 
 CONFIG, topic_model, stance_model, topic_coll, stance_coll = load_environment()
 
+# Check if database is empty and rebuild if needed
+def rebuild_chromadb_from_hf(config_dict):
+    """Rebuild ChromaDB from Hugging Face dataset"""
+    HF_REPO = config_dict.get("hf_dataset_id")
+    if not HF_REPO:
+        return False, "No HF dataset ID in config"
+    
+    topic_name = config_dict["chroma_collections"]["topic"]
+    stance_name = config_dict["chroma_collections"]["stance"]
+    
+    try:
+        # Recreate collections
+        from chromadb import PersistentClient
+        client = PersistentClient(path=str(CHROMA_PATH))
+        
+        # Delete and recreate
+        try:
+            client.delete_collection(topic_name)
+        except:
+            pass
+        try:
+            client.delete_collection(stance_name)
+        except:
+            pass
+            
+        topic_coll_new = client.create_collection(topic_name, metadata={"hnsw:space": "cosine"})
+        stance_coll_new = client.create_collection(stance_name, metadata={"hnsw:space": "cosine"})
+        
+        # Download and load data
+        files = list(list_repo_files(HF_REPO, repo_type="dataset"))
+        batches = sorted({"/".join(f.split("/")[:2]) for f in files if f.startswith("batches/")})
+        
+        topic_total = stance_total = 0
+        
+        def load_npz_safely(path):
+            arr = np.load(path, allow_pickle=False)
+            if isinstance(arr, np.lib.npyio.NpzFile):
+                for key in arr.files:
+                    if arr[key].ndim == 2:
+                        return arr[key]
+                raise ValueError(f"No 2D arrays found in {path}")
+            return arr
+        
+        def load_jsonl(fp):
+            records = []
+            with open(fp, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        records.append(json.loads(line))
+                    except:
+                        continue
+            return records
+        
+        seen_topic_ids, seen_stance_ids = set(), set()
+        
+        for batch in batches:
+            try:
+                topic_npz = hf_hub_download(HF_REPO, f"{batch}/embeddings_topic.npz", repo_type="dataset")
+                stance_npz = hf_hub_download(HF_REPO, f"{batch}/embeddings_stance.npz", repo_type="dataset")
+                meta_topic = hf_hub_download(HF_REPO, f"{batch}/metadata_topic.jsonl", repo_type="dataset")
+                meta_stance = hf_hub_download(HF_REPO, f"{batch}/metadata_stance.jsonl", repo_type="dataset")
+                
+                t_embs, s_embs = load_npz_safely(topic_npz), load_npz_safely(stance_npz)
+                t_meta, s_meta = load_jsonl(meta_topic), load_jsonl(meta_stance)
+                
+                # Upsert topic
+                t_records = []
+                for e, m in zip(t_embs, t_meta):
+                    rid = m.get("row_id") or f"{m.get('id','unknown')}::topic::0"
+                    if rid in seen_topic_ids:
+                        continue
+                    seen_topic_ids.add(rid)
+                    t_records.append((rid, e, m))
+                
+                if t_records:
+                    topic_coll_new.upsert(
+                        ids=[r[0] for r in t_records],
+                        embeddings=[r[1].tolist() for r in t_records],
+                        metadatas=[r[2] for r in t_records]
+                    )
+                topic_total += len(t_records)
+                
+                # Upsert stance
+                s_records = []
+                for e, m in zip(s_embs, s_meta):
+                    rid = m.get("row_id") or f"{m.get('id','unknown')}::stance::0"
+                    if rid in seen_stance_ids:
+                        continue
+                    seen_stance_ids.add(rid)
+                    s_records.append((rid, e, m))
+                
+                if s_records:
+                    stance_coll_new.upsert(
+                        ids=[r[0] for r in s_records],
+                        embeddings=[r[1].tolist() for r in s_records],
+                        metadatas=[r[2] for r in s_records]
+                    )
+                stance_total += len(s_records)
+                
+            except Exception as e:
+                st.write(f"Warning: {batch} failed: {e}")
+                continue
+        
+        return True, f"Rebuilt: {topic_total} topic, {stance_total} stance vectors"
+        
+    except Exception as e:
+        return False, f"Rebuild failed: {type(e).__name__}: {e}"
+
 # Check if database is empty
-try:
-    topic_count = topic_coll.count()
-    stance_count = stance_coll.count()
-    if topic_count == 0 or stance_count == 0:
-        st.error("⚠️ **ChromaDB is empty** - The database needs to be initialized with article data. Please run the database rebuild script from the notebook or clone the pre-built database.")
-        st.stop()
-except Exception as e:
-    st.error(f"Error checking database: {e}")
-    st.stop()
+topic_count = topic_coll.count()
+stance_count = stance_coll.count()
+
+if topic_count == 0 or stance_count == 0:
+    st.warning("⚠️ **ChromaDB is empty** - Rebuilding from Hugging Face...")
+    with st.spinner("Downloading embeddings from Hugging Face. This may take a few minutes..."):
+        success, message = rebuild_chromadb_from_hf(CONFIG)
+        if success:
+            st.success(f"✓ {message}")
+            st.rerun()  # Reload with new data
+        else:
+            st.error(f"✗ {message}")
+            st.stop()
 
 # ------------------------------------------------------------
 # HELPERS
@@ -182,49 +382,55 @@ def interpret_bias(score):
     return "Unknown"
 
 # ------------------------------------------------------------
-# SIDEBAR SETTINGS
+# FILE UPLOAD & ANALYSIS
 # ------------------------------------------------------------
-st.sidebar.header("Settings")
-api_key_input = st.sidebar.text_input("OpenAI API Key", type="password")
-if api_key_input:
-    os.environ["OPENAI_API_KEY"] = api_key_input
-    client = OpenAI(api_key=api_key_input)
-else:
-    client = None
+st.markdown("---")
+st.subheader("📄 Upload Article")
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("Weight Parameters")
-w_T_canonical = st.sidebar.slider("Topic Overlap Weight", 0.0, 10.0, 0.5, 0.1)
-w_T_summary   = st.sidebar.slider("Summary Similarity Weight", 0.0, 10.0, 10.0, 0.1)
-w_S           = st.sidebar.slider("Stance Similarity Weight", 0.0, 10.0, 1.0, 0.1)
-w_B           = st.sidebar.slider("Bias Difference Weight", 0.0, 10.0, 0.8, 0.1)
-w_Tone        = st.sidebar.slider("Tone Difference Weight", 0.0, 10.0, 0.3, 0.1)
-
-# ------------------------------------------------------------
-# FILE UPLOAD
-# ------------------------------------------------------------
-uploaded = st.file_uploader("Upload an article (.pdf, .txt, or .html)")
+uploaded = st.file_uploader(
+    "Choose an article to analyze:", 
+    type=['pdf', 'txt', 'html', 'htm'],
+    help="Upload a PDF, text file, or HTML file containing a news article"
+)
 
 if uploaded:
-    if not client:
+    if not openai_client:
         st.error("Please enter your OpenAI API key first.")
         st.stop()
 
+    # Extract text
     text = extract_text(uploaded)
-    st.write(f"Extracted {len(text)} characters.")
-    st.write("Analyzing...")
+    st.success(f"✓ Extracted {len(text):,} characters from {uploaded.name}")
+    
+    st.markdown("---")
+    st.subheader("🔍 Analysis Progress")
+    
+    progress_bar = st.progress(0)
+    status_text = st.empty()
 
-    # Infer bias for uploaded article
+    # Step 1: Infer bias
+    status_text.text("Step 1/4: Inferring article bias...")
+    progress_bar.progress(20)
+    
     with st.spinner("Inferring article bias..."):
-        bias_uploaded = infer_bias_from_text(text, client)
-    st.success(f"Detected bias: {interpret_bias(bias_uploaded)} ({bias_uploaded:.2f})")
-
-    # Topic and stance embeddings
+        bias_uploaded = infer_bias_from_text(text, openai_client)
+    
+    st.success(f"✓ Detected bias: **{interpret_bias(bias_uploaded)}** (score: {bias_uploaded:.2f})")
+    
+    # Step 2: Generate embeddings
+    status_text.text("Step 2/4: Generating topic and stance embeddings...")
+    progress_bar.progress(40)
+    
     with st.spinner("Generating embeddings..."):
         topic_vec = encode_topic(text)
         stance_vec = encode_stance(text)
+    
+    st.success("✓ Generated semantic embeddings")
 
-    # Use semantic search instead of loading all docs
+    # Step 3: Search database
+    status_text.text("Step 3/4: Searching database for similar articles...")
+    progress_bar.progress(60)
+    
     with st.spinner("Searching database..."):
         # Get top candidates using similarity search
         search_results = topic_coll.query(
@@ -245,6 +451,10 @@ if uploaded:
     stance_docs = stance_coll.get(include=["embeddings", "metadatas"])
     stance_dict = {s_md.get("id", "").split("::")[0]: (s_emb, s_md) 
                    for s_emb, s_md in zip(stance_docs["embeddings"], stance_docs["metadatas"])}
+
+    # Step 4: Calculate scores
+    status_text.text("Step 4/4: Calculating anti-echo scores...")
+    progress_bar.progress(80)
 
     all_matches = []
     for i, (emb, md) in enumerate(zip(candidate_embeddings, candidate_metadatas)):
@@ -270,7 +480,6 @@ if uploaded:
             tone_db = float(s_md.get("tone_score", bias_db))  # Fallback to bias_score
         
         # Calculate topic overlap (simplified - using summary similarity as proxy)
-        # In full version, would extract and match canonical topics
         candidate_topics = md.get("topics_flat", [])
         canonical_overlap = summary_similarity  # Simplified proxy
         if isinstance(candidate_topics, list) and len(candidate_topics) > 0:
@@ -278,7 +487,7 @@ if uploaded:
             pass
         
         bias_diff = abs(bias_uploaded - bias_db)
-        tone_diff = abs(bias_uploaded - tone_db)  # Using bias as proxy for tone
+        tone_diff = abs(bias_uploaded - tone_db)
         
         anti_echo_score = (
             (w_T_canonical * canonical_overlap)
@@ -301,16 +510,30 @@ if uploaded:
             "url": md.get("url","")
         })
 
+    progress_bar.progress(100)
+    status_text.text("✓ Analysis complete!")
+
+    st.markdown("---")
+    st.subheader("📊 Results")
+    
     df = pd.DataFrame(all_matches).sort_values("anti_echo_score", ascending=False).head(10)
     
     if df.empty:
         st.warning("No articles matched the search criteria.")
     else:
-        st.subheader("Results")
-        st.dataframe(df, use_container_width=True)
-
+        st.write(f"Found **{len(df)}** articles with ideologically diverse coverage:")
+        st.dataframe(df[["title", "source", "anti_echo_score", "bias_score"]], use_container_width=True)
+        
+        st.markdown("---")
+        st.subheader("📥 Download Results")
         csv = df.to_csv(index=False).encode("utf-8")
-        st.download_button("Download CSV", csv, "anti_echo_results.csv", mime="text/csv")
+        st.download_button(
+            "📄 Download Full Results as CSV", 
+            csv, 
+            f"anti_echo_results.csv", 
+            mime="text/csv",
+            help="Download the complete analysis with all metrics"
+        )
 
-    if st.button("Reset and Upload Another"):
+    if st.button("🔄 Analyze Another Article"):
         st.rerun()
