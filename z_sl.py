@@ -662,78 +662,35 @@ if uploaded:
         tone_db = 0.0
         
         if stance_data is not None:
-            stance_match_emb, _ = stance_data
+            stance_match_emb, s_md_stance = stance_data
             stance_sim = float(cosine_similarity([stance_vec], [stance_match_emb])[0][0])
+        else:
+            s_md_stance = None
         
         # Debug: print metadata keys on first iteration
         if i == 0:
-            st.caption(f"🔍 Debug: Metadata keys from topic collection: {list(md.keys())}")
-            st.caption(f"🔍 Debug: Sample values - bias_score={md.get('bias_score')}, type={type(md.get('bias_score'))}, source={md.get('source')}")
-            st.caption(f"🔍 Debug: All sample metadata: {json.dumps({k: str(v)[:50] for k, v in list(md.items())[:5]})}")
+            st.caption(f"🔍 Debug: Topic metadata keys: {list(md.keys())}")
+            if s_md_stance:
+                st.caption(f"🔍 Debug: Stance metadata keys: {list(s_md_stance.keys())}")
+                st.caption(f"🔍 Debug: Stance metadata sample: bias_score={s_md_stance.get('bias_score')}, type={type(s_md_stance.get('bias_score'))}")
+            else:
+                st.caption("🔍 Debug: No stance metadata found for this article")
         
-        # Extract bias from metadata - try multiple fields and types
+        # Extract bias from stance metadata (not topic metadata!)
         bias_db = 0.0
+        tone_db = 0.0
         
-        # Direct bias_score field - try multiple conversions
-        if "bias_score" in md:
+        # Get bias from stance metadata
+        if s_md_stance:
             try:
-                val = md["bias_score"]
-                if val == 0 or val == "0" or val == "0.0":
-                    bias_db = 0.0  # Explicitly handle zero
-                elif isinstance(val, (int, float)):
-                    bias_db = float(val)
-                elif isinstance(val, str):
-                    # Try to parse if it's a string
-                    cleaned = val.strip()
-                    if cleaned and cleaned != "":
-                        bias_db = float(cleaned)
+                bias_db = float(s_md_stance.get("bias_score", 0.0))
             except (ValueError, TypeError):
                 pass
-        
-        # Nested in source_bias dict
-        if bias_db == 0.0 and "source_bias" in md:
+            
             try:
-                val = md["source_bias"]
-                if isinstance(val, str):
-                    bias_data = json.loads(val)
-                elif isinstance(val, dict):
-                    bias_data = val
-                else:
-                    bias_data = None
-                    
-                if bias_data and isinstance(bias_data, dict) and "bias_score" in bias_data:
-                    score_val = bias_data["bias_score"]
-                    if isinstance(score_val, (int, float)):
-                        bias_db = float(score_val)
-                    elif isinstance(score_val, str) and score_val.strip():
-                        bias_db = float(score_val)
-            except (json.JSONDecodeError, ValueError, TypeError, KeyError):
-                pass
-        
-        # Try extracting from any nested structure
-        if bias_db == 0.0:
-            for key in ["bias", "political_bias", "ideology"]:
-                if key in md:
-                    try:
-                        val = md[key]
-                        if isinstance(val, (int, float)):
-                            bias_db = float(val)
-                        elif isinstance(val, str) and val.strip():
-                            bias_db = float(val)
-                        if bias_db != 0.0:
-                            break
-                    except (ValueError, TypeError):
-                        pass
-        
-        # Get tone from stance metadata if available
-        tone_db = bias_db  # Default
-        if stance_data:
-            _, s_md = stance_data
-            if "tone_score" in s_md:
-                try:
-                    tone_db = float(s_md["tone_score"])
-                except:
-                    pass
+                tone_db = float(s_md_stance.get("tone_score", bias_db))
+            except (ValueError, TypeError):
+                tone_db = bias_db
         
         # Calculate topic overlap (simplified - using summary similarity as proxy)
         candidate_topics = md.get("topics_flat", [])
