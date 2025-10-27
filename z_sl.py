@@ -1,5 +1,5 @@
 # ================================================================
-# app.py — Anti-Echo Chamber Streamlit Application
+# z_sl.py — Anti-Echo Chamber Streamlit Application
 # ================================================================
 # This app compares a user-uploaded article to a curated corpus
 # of existing articles and finds ideologically diverse coverage
@@ -749,27 +749,31 @@ if uploaded:
             continue
         
         # NOTEBOOK ORDER: summary similarity SECOND (line 2398-2411)
+        # --- FIX: Legacy 768-dim handling (match notebook behavior, no re-encode) ---
         emb_array = np.array(emb)
+
         if len(emb_array) == 1536:
-            # New composite format: compare summary portions
+            # New composite format: compare summary portion directly
             candidate_summary_vec = emb_array[768:]
-            summary_similarity = float(cosine_similarity(uploaded_summary.reshape(1, -1), candidate_summary_vec.reshape(1, -1))[0][0])
+            summary_similarity = float(
+                cosine_similarity(
+                    uploaded_summary.reshape(1, -1),
+                    candidate_summary_vec.reshape(1, -1)
+                )[0][0]
+            )
         else:
-            # Old 768-dim format: check if has summary text
-            old_summary = md.get("openai_topic_summary", "")
-            if old_summary:
-                # Encode the text summary and compare
-                def encode_text(text):
-                    vec = topic_model.encode(text, normalize_embeddings=True, show_progress_bar=False)
-                    if vec.ndim == 2:
-                        vec = vec.flatten()
-                    return vec
-                candidate_summary_vec = encode_text(old_summary)
-                summary_similarity = float(cosine_similarity(uploaded_summary.reshape(1, -1), candidate_summary_vec.reshape(1, -1))[0][0])
-            else:
-                # Fallback: compare with base topic
-                uploaded_base_topic = topic_vec[:768] if len(topic_vec) == 1536 else topic_vec
-                summary_similarity = float(cosine_similarity(uploaded_base_topic.reshape(1, -1), emb_array.reshape(1, -1))[0][0])
+            # Legacy 768-dim: treat as base topic vector (no GPT re-encode)
+            uploaded_base_topic = topic_vec[:768] if len(topic_vec) == 1536 else topic_vec
+            candidate_summary_vec = emb_array
+            summary_similarity = float(
+                cosine_similarity(
+                    uploaded_base_topic.reshape(1, -1),
+                    candidate_summary_vec.reshape(1, -1)
+                )[0][0]
+            )
+            # Optional: visible console log
+            print("Detected legacy 768-dim embeddings — using topic-to-topic similarity only.")
+
         
         # FILTER: Check summary similarity threshold (notebook line 2411)
         if summary_similarity < SUMMARY_SIMILARITY_THRESHOLD:
