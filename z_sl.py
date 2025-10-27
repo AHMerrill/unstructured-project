@@ -174,6 +174,7 @@ st.markdown(intro_text)
 # ------------------------------------------------------------
 @st.cache_resource(show_spinner=True)
 def load_environment():
+    """Load models with caching"""
     with open(CONFIG_DIR / "config.yaml", "r") as f:
         CONFIG = yaml.safe_load(f)
     topic_model = SentenceTransformer(CONFIG["embeddings"]["topic_model"], device="cuda" if torch.cuda.is_available() else "cpu")
@@ -621,6 +622,14 @@ if uploaded:
         
         # Generate stance classification with GPT
         stance_classification = infer_stance_classification(text, st.session_state.source_confirmed, openai_client)
+        
+        # Parse and display stance metadata (like notebook Stage 5b)
+        stance_lines = stance_classification.split('\n')
+        st.markdown("**Stance Classification:**")
+        if len(stance_lines) >= 3:
+            st.markdown(f"- Political Leaning: {stance_lines[0]}")
+            st.markdown(f"- Implied Stance: {stance_lines[1]}")
+            st.markdown(f"- Summary: {stance_lines[2]}")
         
         # Embed the stance classification
         stance_vec = encode_stance(stance_classification)
