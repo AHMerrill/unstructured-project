@@ -699,7 +699,7 @@ if uploaded:
     passed_topic = 0
     
     # Show sample of what we're comparing
-    st.caption(f"Uploaded summary shape: {uploaded_summary.shape}")
+    st.caption(f"Uploaded topic shape: {topic_vec.shape}")
     st.caption(f"Total candidates: {len(candidate_embeddings)}")
     
     progress_bar_search = st.progress(0)
