@@ -1,6 +1,7 @@
 # ================================================================
 # z_sl.py — Anti-Echo Chamber Streamlit Application
 # ================================================================
+# Matches functionality of anti_echo_chamber.ipynb
 # This app compares a user-uploaded article to a curated corpus
 # of existing articles and finds ideologically diverse coverage
 # of the same event or topic using semantic and stance embeddings.
@@ -12,6 +13,7 @@ from pathlib import Path
 from openai import OpenAI
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.cluster import AgglomerativeClustering
 from rapidfuzz import process, fuzz
 from bs4 import BeautifulSoup
 import streamlit as st
@@ -123,10 +125,10 @@ This tool helps you find **ideologically diverse coverage** of news stories you'
    - GPT-4o-mini generates a one-sentence topic summary (max 20 words)
    - Example: "Trump's plan to use unspent Defense Department funds to pay military personnel during a government shutdown violates the Constitution"
 
-3. **Generate Composite Topic Embedding**
-   - Base topic embedding: Uses `intfloat/e5-base-v2` (768 dim) on article text
-   - Summary embedding: Uses `intfloat/e5-base-v2` on the GPT topic summary
-   - Composite: Concatenates base + summary = 1536-dim vector
+3. **Generate Topic Embedding**
+   - Hierarchical clustering of sentences using `intfloat/e5-base-v2` (768 dim)
+   - Extracts canonical topics via anchor matching
+   - Stores topic vector (768-dim) and summary text (for comparison)
 
 4. **Generate Stance Embedding**
    - GPT-4o-mini classifies: political leaning, implied stance, argument summary
@@ -134,8 +136,8 @@ This tool helps you find **ideologically diverse coverage** of news stories you'
 
 5. **Semantic Search in ChromaDB**
    - Retrieves ALL topic documents from the database
-   - For each candidate: compares canonical topics (Jaccard + semantic) and summary embeddings
-   - Filters candidates with topic overlap ≥ 0.0 and summary similarity ≥ 0.8
+   - For each candidate: compares canonical topics and encodes summary text for similarity
+   - Filters candidates by topic overlap and summary similarity (thresholds: topic ≥ 0.0, summary ≥ 0.8)
    - Deduplicates to keep best match per unique article
 
 6. **Anti-Echo Scoring & Results**
@@ -613,26 +615,34 @@ if uploaded:
     st.success(f"✓ Topic summary: {topic_summary}")
     
     # Step 3.5: Extract canonical topics (needed for matching)
-    # For now, use topic_summary as a proxy - the full implementation would match against anchors
-    # This is a simplified version - in the full notebook, it does hierarchical clustering and matches to anchors
-    upload_topics_list = []  # Empty for now, will use summary similarity primarily
+    # The notebook does hierarchical clustering + anchor matching, but for now we store an empty list
+    # The scraper outputs canonical topics, but for user-uploaded articles we don't extract them
+    upload_topics_list = []
     
-    # Step 4: Generate embeddings (composite topic + stance)
+    # Step 4: Generate embeddings (scraper-style: base topic + stance)
     status_text.text("Step 4/5: Generating embeddings...")
     progress_bar.progress(60)
     
     with st.spinner("Generating embeddings..."):
-        # Base topic embedding
-        topic_vec_base = encode_topic(text)
-        # Embed the GPT summary
-        topic_summary_vec = encode_topic(topic_summary)
+        # Generate base topic vectors (like notebook Stage 5a)
+        sents = nltk.sent_tokenize(text)
+        if not sents:
+            topic_vecs_list = [encode_topic(" ".join(sents))]
+        elif len(sents) < 2:
+            topic_vecs_list = [encode_topic(" ".join(sents))]
+        else:
+            # Hierarchical clustering like notebook
+            emb = encode_topic(sents)
+            k = min(max(1, len(sents)//8), 8)
+            from sklearn.cluster import AgglomerativeClustering
+            labels = AgglomerativeClustering(n_clusters=k).fit_predict(emb)
+            segs = [" ".join([s for s, l in zip(sents, labels) if l == lab]) for lab in sorted(set(labels))]
+            topic_vecs_list = [encode_topic(seg) for seg in segs]
         
-        # Composite: [base | summary]
-        if topic_vec_base.ndim == 2:
-            topic_vec_base = topic_vec_base.flatten()
-        if topic_summary_vec.ndim == 2:
-            topic_summary_vec = topic_summary_vec.flatten()
-        topic_vec = np.concatenate([topic_vec_base, topic_summary_vec])
+        # Use first (primary) topic vector like notebook
+        topic_vec = topic_vecs_list[0] if topic_vecs_list else encode_topic(text)
+        if topic_vec.ndim == 2:
+            topic_vec = topic_vec.flatten()
         
         # Generate stance classification with GPT
         stance_text, stance_data = infer_stance_classification(text, st.session_state.source_confirmed, openai_client)
@@ -644,7 +654,7 @@ if uploaded:
         # Embed the stance classification
         stance_vec = encode_stance(stance_text)
     
-    st.success("✓ Generated composite topic embeddings and stance embeddings")
+    st.success("✓ Generated topic and stance embeddings")
 
     # Step 5: Search database
     status_text.text("Step 5/6: Searching database for similar articles...")
@@ -676,22 +686,16 @@ if uploaded:
     SUMMARY_SIMILARITY_THRESHOLD = 0.8
 
     all_matches = []
-    # Extract uploaded summary vector
-    uploaded_summary = topic_vec[768:] if len(topic_vec) == 1536 else topic_vec
+    # Load the topic summary text (stored in Stage 5a)
+    uploaded_summary_text = topic_summary  # This is the GPT-generated summary text
     
     st.caption(f"Checking {len(candidate_embeddings)} topic vectors from database...")
     passed_summary = 0
     passed_topic = 0
     
-    # Check if we need to encode old summaries
-    old_format_count = 0
-    for emb, md in zip(candidate_embeddings[:10], candidate_metadatas[:10]):  # Sample first 10
-        if len(emb) == 768 and md.get("openai_topic_summary"):
-            old_format_count += 1
-    if old_format_count > 0:
-        st.info(f"⚠️ Found {old_format_count}/10 sample vectors with old format (768-dim + text summary). These require encoding.")
-    else:
-        st.info("✓ All sample vectors appear to be in composite 1536-dim format (no encoding needed)")
+    # Show sample of what we're comparing
+    st.caption(f"Uploaded summary shape: {uploaded_summary.shape}")
+    st.caption(f"Total candidates: {len(candidate_embeddings)}")
     
     progress_bar_search = st.progress(0)
     total_candidates = len(candidate_embeddings)
@@ -748,31 +752,33 @@ if uploaded:
         if canonical_overlap < CANONICAL_TOPIC_THRESHOLD:
             continue
         
-        # NOTEBOOK ORDER: summary similarity SECOND (line 2398-2411)
-        # --- FIX: Legacy 768-dim handling (match notebook behavior, no re-encode) ---
+        # NOTEBOOK ORDER: summary similarity SECOND (match notebook line 2398-2411)
         emb_array = np.array(emb)
-
-        if len(emb_array) == 1536:
-            # New composite format: compare summary portion directly
-            candidate_summary_vec = emb_array[768:]
+        
+        # For 768-dim vectors: encode the old summary text if available
+        old_summary = md.get("openai_topic_summary", "")
+        if old_summary:
+            # Encode both summaries and compare (like notebook)
+            candidate_summary_vec = topic_model.encode(old_summary, normalize_embeddings=True, show_progress_bar=False)
+            uploaded_summary_vec = topic_model.encode(uploaded_summary_text, normalize_embeddings=True, show_progress_bar=False)
+            if candidate_summary_vec.ndim == 2:
+                candidate_summary_vec = candidate_summary_vec.flatten()
+            if uploaded_summary_vec.ndim == 2:
+                uploaded_summary_vec = uploaded_summary_vec.flatten()
             summary_similarity = float(
                 cosine_similarity(
-                    uploaded_summary.reshape(1, -1),
+                    uploaded_summary_vec.reshape(1, -1),
                     candidate_summary_vec.reshape(1, -1)
                 )[0][0]
             )
         else:
-            # Legacy 768-dim: treat as base topic vector (no GPT re-encode)
-            uploaded_base_topic = topic_vec[:768] if len(topic_vec) == 1536 else topic_vec
-            candidate_summary_vec = emb_array
+            # Fallback: compare base topic vectors
             summary_similarity = float(
                 cosine_similarity(
-                    uploaded_base_topic.reshape(1, -1),
-                    candidate_summary_vec.reshape(1, -1)
+                    topic_vec.reshape(1, -1),
+                    emb_array.reshape(1, -1)
                 )[0][0]
             )
-            # Optional: visible console log
-            print("Detected legacy 768-dim embeddings — using topic-to-topic similarity only.")
 
         
         # FILTER: Check summary similarity threshold (notebook line 2411)
