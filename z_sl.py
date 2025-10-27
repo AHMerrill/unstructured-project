@@ -149,9 +149,9 @@ This tool helps you find **ideologically diverse coverage** of news stories you'
 **Higher scores = better matches** (same topic, different viewpoint):
 
 ```
-anti_echo_score = 
-  (w_T_canonical × canonical_overlap)
-  + (w_T_summary × summary_similarity)  
+anti_echo_score =
+(w_T_canonical × canonical_overlap)
++ (w_T_summary × summary_similarity)
   - (w_S × stance_similarity)
   - (w_B × bias_diff)
   - (w_Tone × tone_diff)
@@ -633,7 +633,7 @@ if uploaded:
     
     with st.spinner("Retrieving all topic documents..."):
         # Like notebook line 2365: get ALL topic docs (not query)
-        topic_docs = topic_coll.get(include=["embeddings", "metadatas"])
+    topic_docs = topic_coll.get(include=["embeddings", "metadatas"])
         candidate_embeddings = topic_docs["embeddings"]
         candidate_metadatas = topic_docs["metadatas"]
 
@@ -663,7 +663,13 @@ if uploaded:
     passed_summary = 0
     passed_topic = 0
     
+    progress_bar_search = st.progress(0)
+    total_candidates = len(candidate_embeddings)
+    
     for i, (emb, md) in enumerate(zip(candidate_embeddings, candidate_metadatas)):
+        # Update progress every 50 items
+        if i % 50 == 0:
+            progress_bar_search.progress(i / total_candidates)
         # NOTEBOOK ORDER: canonical overlap FIRST (line 2394)
         # Calculate canonical topic overlap using Jaccard similarity (same as notebook)
         def parse_topics(obj):
@@ -791,6 +797,8 @@ if uploaded:
             "anti_echo_score": anti_echo_score,
             "url": md.get("url", "")
         })
+    
+    progress_bar_search.progress(1.0)
 
     st.caption(f"✓ {passed_summary} passed summary threshold ≥ {SUMMARY_SIMILARITY_THRESHOLD}, {passed_topic} passed topic threshold ≥ {CANONICAL_TOPIC_THRESHOLD}, {len(all_matches)} before deduplication")
     
