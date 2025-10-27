@@ -1,5 +1,5 @@
 # ================================================================
-# z_sl.py — Anti-Echo Chamber Streamlit Application
+# sl.py — Anti-Echo Chamber Streamlit Application
 # ================================================================
 # Matches functionality of anti_echo_chamber.ipynb
 # This app compares a user-uploaded article to a curated corpus
@@ -574,7 +574,8 @@ st.subheader("📄 Upload Article")
 uploaded = st.file_uploader(
     "Choose an article to analyze:", 
     type=['pdf', 'txt', 'html', 'htm'],
-    help="Upload a PDF, text file, or HTML file containing a news article"
+    help="Upload a PDF, text file, or HTML file containing a news article",
+    key="file_uploader"  # Give it a key so we can clear it
 )
 
 if uploaded:
@@ -629,10 +630,21 @@ if uploaded:
     # Show detailed bias inference (like notebook lines 759, 1740-1754)
     st.success(f"✓ Detected bias: **{interpret_bias(bias_uploaded)}** (score: {bias_uploaded:.2f})")
     
-    # Check tone alignment (like notebook line 1744)
-    tone_score = bias_uploaded  # Will be updated after stance classification
-    tone_match = abs(bias_uploaded - tone_score) <= 0.3
-    st.caption(f"Tone alignment: {'✓ Matches outlet bias' if tone_match else '⚠ Mismatch detected'}")
+    # Show source bias explanation
+    bias_label = interpret_bias(bias_uploaded)
+    with st.expander("📊 Source Bias Analysis", expanded=True):
+        st.markdown(f"""
+**{st.session_state.source_confirmed}** is classified as **{bias_label}** with a bias score of **{bias_uploaded:.2f}**.
+
+This score represents the outlet's typical political leaning:
+- **-1.0 to -0.6**: Progressive / Left (e.g., Vox, MSNBC)
+- **-0.6 to -0.2**: Center-Left (e.g., NPR, BBC)
+- **-0.2 to +0.2**: Center / Neutral (e.g., Reuters, AP)
+- **+0.2 to +0.6**: Center-Right (e.g., WSJ, The Economist)
+- **+0.6 to +1.0**: Conservative / Right (e.g., Fox News, Daily Caller)
+
+We'll compare this article's tone to the outlet's typical bias to see if they align.
+        """)
     
     # Step 3: Generate topic summary with GPT
     status_text.text("Step 3/5: Generating GPT topic summary...")
@@ -723,6 +735,25 @@ if uploaded:
         # Display stance metadata (like notebook Stage 5b output)
         st.markdown("**Stance Classification:**")
         st.json(stance_data)
+        
+        # Now check tone alignment with actual tone score
+        article_tone = stance_data.get("political_leaning", "unknown").lower()
+        tone_score_mapping = {
+            "progressive left": -0.8, "center left": -0.4, "center": 0.0,
+            "center right": 0.4, "conservative right": 0.8, "libertarian right": 0.6
+        }
+        tone_score = tone_score_mapping.get(article_tone, 0.0)
+        tone_match = abs(bias_uploaded - tone_score) <= 0.3
+        
+        with st.expander("🎭 Tone Alignment Analysis", expanded=True):
+            st.markdown(f"""
+**Article Tone:** {stance_data.get("political_leaning", "unknown").title()}  
+**Outlet Bias:** {interpret_bias(bias_uploaded)} (score: {bias_uploaded:.2f})  
+**Article Tone Score:** {tone_score:.2f}  
+**Alignment:** {'✓ **Matches** - This article aligns with the outlet\'s typical bias' if tone_match else '⚠️ **Mismatch** - This article diverges from the outlet\'s typical stance'}
+
+{"This article's tone is consistent with what we'd expect from " + st.session_state.source_confirmed + "." if tone_match else "Interesting! This article takes a different angle than " + st.session_state.source_confirmed + " usually does. This could be an op-ed, guest column, or coverage of a contrarian view."}
+            """)
         
         # Embed the stance classification
         stance_vec = encode_stance(stance_text)
@@ -1051,4 +1082,5 @@ if st.button("🔄 Analyze Another Article"):
     # Clear all session state to force full re-analysis
     for key in list(st.session_state.keys()):
         del st.session_state[key]
-    st.rerun()
+    # Use page reload to fully reset the file uploader
+    st.markdown('<meta http-equiv="refresh" content="0">', unsafe_allow_html=True)
