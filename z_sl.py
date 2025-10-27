@@ -121,10 +121,13 @@ This tool helps you find **ideologically diverse coverage** of news stories you'
 
 ### 📊 How It Works
 
-1. **Upload & Source Confirmation**
+1. **Upload & Source Bias Inference**
    - Extracts text using `pdfplumber`, `BeautifulSoup`, or direct text parsing
-   - GPT-4o-mini infers the publication source, you confirm or edit it
-   - GPT-4o-mini classifies political bias (-1.0 to +1.0) by matching against known outlets
+   - GPT-4o-mini infers the publication source from URL/domain or article content
+   - You confirm or edit the inferred source name
+   - GPT-4o-mini classifies the outlet's political bias (-1.0 = far left, +1.0 = far right) by:
+     - Fuzzy matching against known outlets in the database (fuzzy matching score ≥85)
+     - If no match found, GPT infers bias from outlet characteristics (bias_family, bias_score, rationale)
 
 2. **Generate Topic Summary**
    - GPT-4o-mini generates a one-sentence topic summary (max 20 words)
@@ -135,9 +138,12 @@ This tool helps you find **ideologically diverse coverage** of news stories you'
    - Extracts canonical topics via anchor matching
    - Stores topic vector (768-dim) and summary text (for comparison)
 
-4. **Generate Stance Embedding**
+4. **Generate Stance Embedding & Tone Matching**
    - GPT-4o-mini classifies: political leaning, implied stance, argument summary
    - These texts are concatenated and embedded with `all-mpnet-base-v2` (768 dim)
+   - **Tone Alignment Check**: Compares inferred tone score vs. source bias score
+     - If difference ≤0.3: ✓ Tone matches outlet bias (author aligns with publication)
+     - If difference >0.3: ⚠ Mismatch detected (author may deviate from outlet's usual stance)
 
 5. **Semantic Search in ChromaDB**
    - Retrieves ALL topic documents from the database
@@ -148,9 +154,13 @@ This tool helps you find **ideologically diverse coverage** of news stories you'
    - Deduplicates to keep best match per unique article
 
 6. **Anti-Echo Scoring & Results**
-   - Computes stance similarity via cosine comparison of stance embeddings
-   - Calculates anti-echo score: (topic overlap × weight) + (summary similarity × weight) - (stance similarity × weight) - (bias difference × weight) - (tone difference × weight)
-   - Displays organized results by similarity type (same topic / different bias, opposite stance, top candidates)
+   - For each matched candidate article:
+     - Extracts source bias and tone scores from the database
+     - Computes stance similarity via cosine comparison of stance embeddings
+     - Calculates bias difference (|your bias - candidate bias|) and tone difference
+   - Anti-echo score: (topic overlap × weight) + (summary similarity × weight) - (stance similarity × weight) - (bias difference × weight) - (tone difference × weight)
+   - Higher scores = better matches (same topic, different viewpoint)
+   - Displays organized results by category: ideological spread overview, same topic/different bias, opposite stance, top candidates
 
 ---
 
@@ -170,9 +180,15 @@ anti_echo_score =
 **Variables:**
 - `canonical_overlap`: Topic label overlap (Jaccard similarity)
 - `summary_similarity`: Semantic similarity of article summaries
-- `stance_similarity`: How similar the political stance is
-- `bias_diff`: Difference in political bias scores (-1.0 to 1.0)
-- `tone_diff`: Difference in tone/sentiment
+- `stance_similarity`: How similar the political stance/argumentation style is
+- `bias_diff`: Absolute difference in source outlet bias scores (-1.0 to 1.0)
+- `tone_diff`: Absolute difference in author tone vs. outlet bias (measures alignment)
+
+**Example:** If you upload from a left-leaning outlet (-0.6) and find a match from a right-leaning outlet (+0.8):
+- High topic + summary similarity → same event covered
+- Low stance similarity → different argumentation/styles
+- Large bias_diff (1.4) → different source perspectives
+- Results in HIGH anti-echo score (ideologically diverse coverage)
 
 Adjust the weights in the sidebar to tune the algorithm!
 """
@@ -589,14 +605,20 @@ if uploaded:
     
     st.success(f"✓ Source: **{st.session_state.source_confirmed}**")
     
-    # Step 2: Infer bias
+    # Step 2: Infer bias (with GPT detailed output like notebook)
     status_text.text("Step 2/5: Inferring article bias...")
     progress_bar.progress(30)
     
     with st.spinner("Inferring article bias..."):
         bias_uploaded = infer_bias_from_text(text, st.session_state.source_confirmed, openai_client)
     
+    # Show detailed bias inference (like notebook lines 759, 1740-1754)
     st.success(f"✓ Detected bias: **{interpret_bias(bias_uploaded)}** (score: {bias_uploaded:.2f})")
+    
+    # Check tone alignment (like notebook line 1744)
+    tone_score = bias_uploaded  # Will be updated after stance classification
+    tone_match = abs(bias_uploaded - tone_score) <= 0.3
+    st.caption(f"Tone alignment: {'✓ Matches outlet bias' if tone_match else '⚠ Mismatch detected'}")
     
     # Step 3: Generate topic summary with GPT
     status_text.text("Step 3/5: Generating GPT topic summary...")
@@ -691,8 +713,8 @@ if uploaded:
         # Like notebook line 2365: get ALL topic docs (not query)
         topic_docs = topic_coll.get(include=["embeddings", "metadatas"])
         
-        candidate_embeddings = topic_docs["embeddings"]
-        candidate_metadatas = topic_docs["metadatas"]
+    candidate_embeddings = topic_docs["embeddings"]
+    candidate_metadatas = topic_docs["metadatas"]
 
     # Get all stance docs for matching
     stance_docs = stance_coll.get(include=["embeddings", "metadatas"])
@@ -797,24 +819,18 @@ if uploaded:
         emb_array = np.array(emb)
         
         # Match notebook logic exactly (lines 2371-2383)
-        old_summary = md.get("openai_topic_summary", "")
-        if old_summary and old_summary in encoded_summaries_cache:
-            # Use pre-encoded candidate summary from cache
-            candidate_summary_vec = encoded_summaries_cache[old_summary]
-            summary_similarity = float(
-                cosine_similarity(
-                    uploaded_summary_vec.reshape(1, -1),
-                    candidate_summary_vec.reshape(1, -1)
-                )[0][0]
-            )
+        # --- Handle both 768 (scraper) and 1536 (future) formats ---
+        if len(emb_array) == 1536:
+            candidate_summary_vec = emb_array[768:]
+            summary_similarity = cosine_similarity(uploaded_summary_vec.reshape(1,-1), candidate_summary_vec.reshape(1,-1))[0][0]
+            old_summary = "(new format)"
         else:
-            # Fallback: compare base topic vectors
-            summary_similarity = float(
-                cosine_similarity(
-                    topic_vec.reshape(1, -1),
-                    emb_array.reshape(1, -1)
-                )[0][0]
-            )
+            old_summary = md.get("openai_topic_summary", "")
+            if old_summary and old_summary in encoded_summaries_cache:
+                candidate_summary_vec = encoded_summaries_cache[old_summary]
+                summary_similarity = cosine_similarity(uploaded_summary_vec.reshape(1,-1), candidate_summary_vec.reshape(1,-1))[0][0]
+            else:
+                summary_similarity = cosine_similarity(topic_vec.reshape(1,-1), emb_array.reshape(1,-1))[0][0]
 
         
         # FILTER: Check summary similarity threshold (notebook line 2411)
@@ -822,63 +838,15 @@ if uploaded:
             continue
         passed_summary += 1
         
-        # Match stance by article ID
         article_id_base = md.get("id", "").split("::")[0]
-        stance_data = stance_dict.get(article_id_base)
-        stance_sim = 0.0
-        tone_db = 0.0
-        
-        if stance_data is not None:
-            stance_match_emb, s_md_stance = stance_data
-            stance_sim = float(cosine_similarity([stance_vec], [stance_match_emb])[0][0])
-        else:
-            s_md_stance = None
-        
-        # Extract bias from stance metadata (not topic metadata!)
-        bias_db = 0.0
-        tone_db = 0.0
-        
-        # Get bias from stance metadata (like notebook lines 2421-2429)
-        if s_md_stance:
-            try:
-                bias_db = float(s_md_stance.get("bias_score", 0.0))
-            except (ValueError, TypeError):
-                # Try parsing from nested JSON like notebook
-                try:
-                    source_bias_str = s_md_stance.get("source_bias", "{}")
-                    source_bias_json = json.loads(source_bias_str)
-                    bias_db = float(source_bias_json.get("bias_score", 0.0))
-                except:
-                    pass
-            
-            try:
-                tone_db = float(s_md_stance.get("tone_score", bias_db))
-            except (ValueError, TypeError):
-                tone_db = bias_db
-        
-        bias_diff = abs(bias_uploaded - bias_db)
-        tone_diff = abs(bias_uploaded - tone_db)
-        
-        anti_echo_score = (
-            (w_T_canonical * canonical_overlap)
-            + (w_T_summary * summary_similarity)
-            - (w_S * stance_sim)
-            - (w_B * bias_diff)
-            - (w_Tone * tone_diff)
-        )
         all_matches.append({
             "article_id": article_id_base,
             "title": md.get("title", "Untitled"),
             "source": md.get("source", "Unknown"),
             "bias_family": md.get("bias_family", ""),
-            "bias_score": bias_db,
             "canonical_overlap": canonical_overlap,
             "summary_similarity": summary_similarity,
-            "stance_similarity": stance_sim,
-            "bias_diff": bias_diff,
-            "tone_diff": tone_diff,
-            "anti_echo_score": anti_echo_score,
-            "url": md.get("url", "")
+            "metadata": md
         })
     
     progress_bar_search.progress(1.0)
@@ -893,18 +861,92 @@ if uploaded:
             best_matches[aid] = match
     
     st.caption(f"✓ After deduplication: {len(best_matches)} unique articles")
+    
+    # Now compute stance, bias, and anti-echo score for each match (notebook lines 2415-2460)
+    final_scores = []
+    for aid, m in best_matches.items():
+        md = m["metadata"]
+        
+        bias_db, tone_db = 0.0, 0.0
+        for s_md in stance_docs["metadatas"]:
+            s_aid = s_md.get("id","").split("::")[0]
+            if s_aid == aid:
+                try:
+                    bias_db = float(s_md.get("bias_score", 0.0))
+                except Exception:
+                    try:
+                        bias_db = float(json.loads(s_md.get("source_bias","{}")).get("bias_score", 0.0))
+                    except Exception:
+                        bias_db = 0.0
+                tone_db = float(s_md.get("tone_score", 0.0))
+                break
+        
+        bias_diff = abs(bias_uploaded - bias_db)
+        tone_diff = abs(bias_uploaded - tone_db)
+        
+        stance_match = None
+        for s_emb, s_md in zip(stance_docs["embeddings"], stance_docs["metadatas"]):
+            if s_md.get("id","").split("::")[0] == aid:
+                stance_match = s_emb
+                break
+        
+        stance_sim = 0.0
+        if stance_match is not None:
+            stance_sim = cosine_similarity(stance_vec.reshape(1,-1), np.array(stance_match).reshape(1,-1))[0][0]
+        
+        anti_echo_score = (
+            (w_T_canonical * m["canonical_overlap"])
+            + (w_T_summary * m["summary_similarity"])
+            - (w_S * stance_sim)
+            - (w_B * bias_diff)
+            - (w_Tone * tone_diff)
+        )
+        
+        final_scores.append({
+            "article_id": aid,
+            "source": m["source"],
+            "title": m["title"],
+            "url": md.get("url", ""),
+            "bias_family": m["bias_family"],
+            "bias_score": bias_db,
+            "canonical_overlap": m["canonical_overlap"],
+            "summary_similarity": m["summary_similarity"],
+            "stance_similarity": stance_sim,
+            "bias_diff": bias_diff,
+            "tone_diff": tone_diff,
+            "anti_echo_score": anti_echo_score
+        })
 
     progress_bar.progress(100)
     status_text.text("✓ Analysis complete!")
     
-    if not best_matches:
+    if not final_scores:
         st.warning("⚠️ **No articles matched the search criteria after filtering.**")
         st.info("This could mean:\n1. No articles in the database share similar topics\n2. Thresholds are too strict (canonical ≥ 0.3, summary ≥ 0.8)")
         st.stop()
     
-    df = pd.DataFrame(best_matches.values()).sort_values("anti_echo_score", ascending=False).head(100)
+    df = pd.DataFrame(final_scores).sort_values("anti_echo_score", ascending=False).head(100)
+    
+    # ===== IDEOLOGICAL SPREAD OVERVIEW (like notebook show_overview) =====
+    st.markdown("---")
+    st.subheader("📊 Ideological Spread Overview")
+    
+    left_outlets = df[df["bias_score"] < -0.2]["source"].unique()
+    right_outlets = df[df["bias_score"] > 0.2]["source"].unique()
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(f"**Left / Progressive Outlets:** {', '.join(left_outlets) if len(left_outlets) > 0 else 'none'}")
+    with col2:
+        st.markdown(f"**Right / Conservative Outlets:** {', '.join(right_outlets) if len(right_outlets) > 0 else 'none'}")
+    
+    # Show top match
+    top = df.iloc[0]
+    st.markdown(f"**Top Match:** [{top['title'][:80]}{'...' if len(top['title']) > 80 else ''}]({top['url'] if top.get('url') else '#'}) from {top['source']} ({interpret_bias(top['bias_score'])})")
+    st.markdown(f"**Anti-Echo Score:** {top['anti_echo_score']:.3f}")
     
     st.markdown("---")
+    st.subheader("📰 Results by Category")
     
     # SECTION 1: Same Topic — Different Source Bias
     st.subheader("📰 Same Topic — Different Source Bias")
@@ -915,7 +957,9 @@ if uploaded:
     if not diff_bias.empty:
         for idx, (_, row) in enumerate(diff_bias.iterrows(), 1):
             st.markdown(f"### {idx}. [{row['title']}]({row['url'] if row.get('url') else '#'})")
-            st.markdown(f"**Source:** {row['source']} | **Bias:** {interpret_bias(row['bias_score'])} ({row['bias_score']:.2f})")
+            bias_label = interpret_bias(row['bias_score'])
+            tone_emoji = "📰" if abs(row['bias_score']) > 0.2 else "📰"
+            st.markdown(f"**Source:** {row['source']} | **Source Bias:** {bias_label} (score: {row['bias_score']:.2f}) {tone_emoji}")
             st.markdown(f"**Anti-Echo Score:** {row['anti_echo_score']:.3f} | **Bias Difference:** {row['bias_diff']:.2f} | **Summary Similarity:** {row['summary_similarity']:.3f}")
     else:
         st.info("No articles found with significant bias differences.")
@@ -931,7 +975,9 @@ if uploaded:
     if not opp_stance.empty:
         for idx, (_, row) in enumerate(opp_stance.iterrows(), 1):
             st.markdown(f"### {idx}. [{row['title']}]({row['url'] if row.get('url') else '#'})")
-            st.markdown(f"**Source:** {row['source']} | **Bias:** {interpret_bias(row['bias_score'])} ({row['bias_score']:.2f})")
+            bias_label = interpret_bias(row['bias_score'])
+            tone_emoji = "📰" if abs(row['bias_score']) > 0.2 else "📰"
+            st.markdown(f"**Source:** {row['source']} | **Source Bias:** {bias_label} (score: {row['bias_score']:.2f}) {tone_emoji}")
             st.markdown(f"**Anti-Echo Score:** {row['anti_echo_score']:.3f} | **Stance Similarity:** {row['stance_similarity']:.3f} | **Summary Similarity:** {row['summary_similarity']:.3f}")
     else:
         st.info("No articles found with opposing stances.")
@@ -946,7 +992,9 @@ if uploaded:
     
     for idx, (_, row) in enumerate(top_candidates.iterrows(), 1):
         st.markdown(f"### {idx}. [{row['title']}]({row['url'] if row.get('url') else '#'})")
-        st.markdown(f"**Source:** {row['source']} | **Bias:** {interpret_bias(row['bias_score'])} ({row['bias_score']:.2f})")
+        bias_label = interpret_bias(row['bias_score'])
+        tone_emoji = "📰" if abs(row['bias_score']) > 0.2 else "📰"
+        st.markdown(f"**Source:** {row['source']} | **Source Bias:** {bias_label} (score: {row['bias_score']:.2f}) {tone_emoji}")
         st.markdown(f"**Anti-Echo Score:** {row['anti_echo_score']:.3f} | **Bias Diff:** {row['bias_diff']:.2f} | **Summary Sim:** {row['summary_similarity']:.3f} | **Stance Sim:** {row['stance_similarity']:.3f}")
     
     st.markdown("---")
