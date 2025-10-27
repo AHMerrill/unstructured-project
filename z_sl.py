@@ -118,8 +118,12 @@ This tool helps you find **ideologically diverse coverage** of news stories you'
    
 2. **Generate Semantic Embeddings**
    - **Topic Embeddings:** Uses `intfloat/e5-base-v2` SentenceTransformer (768-dim) to create dense semantic vectors capturing article topics
+     - GPT-4o-mini generates one-sentence topic summaries for fine-grained matching
+     - Composite embeddings combine topic vectors with GPT summaries (1536-dim)
    - **Stance Embeddings:** Uses `all-mpnet-base-v2` SentenceTransformer to encode political stance, tone, and worldview
-   - Both models are optimized for cosine similarity search in ChromaDB
+     - GPT-4o-mini classifies political leaning, implied stance, and argument summary
+     - These classifications are embedded with mpnet to create hybrid stance vectors
+   - Both embedding types use cosine similarity search in ChromaDB
    
 3. **Bias Inference**
    - Uses GPT-4o-mini to classify the article's political bias on a -1.0 (far left) to +1.0 (far right) scale
@@ -296,10 +300,15 @@ def rebuild_chromadb_from_hf(config_dict):
                 # Upsert topic
                 t_records = []
                 for e, m in zip(t_embs, t_meta):
+                    if not isinstance(m, dict):
+                        continue
+                    
                     rid = m.get("row_id") or f"{m.get('id','unknown')}::topic::0"
                     if rid in seen_topic_ids:
                         continue
                     seen_topic_ids.add(rid)
+                    
+                    # Ensure metadata is a dict - pass through as-is
                     t_records.append((rid, e, m))
                 
                 if t_records:
@@ -313,10 +322,15 @@ def rebuild_chromadb_from_hf(config_dict):
                 # Upsert stance
                 s_records = []
                 for e, m in zip(s_embs, s_meta):
+                    if not isinstance(m, dict):
+                        continue
+                    
                     rid = m.get("row_id") or f"{m.get('id','unknown')}::stance::0"
                     if rid in seen_stance_ids:
                         continue
                     seen_stance_ids.add(rid)
+                    
+                    # Ensure metadata is a dict - pass through as-is
                     s_records.append((rid, e, m))
                 
                 if s_records:
@@ -571,8 +585,9 @@ if uploaded:
         
         # Debug: print metadata keys on first iteration
         if i == 0:
-            st.caption(f"🔍 Debug: Metadata keys: {list(md.keys())}")
-            st.caption(f"🔍 Debug: Sample values: bias_score={md.get('bias_score')}, source_bias={md.get('source_bias')}")
+            st.caption(f"🔍 Debug: Metadata keys from topic collection: {list(md.keys())}")
+            st.caption(f"🔍 Debug: Sample values - bias_score={md.get('bias_score')}, type={type(md.get('bias_score'))}, source={md.get('source')}")
+            st.caption(f"🔍 Debug: All sample metadata: {json.dumps({k: str(v)[:50] for k, v in list(md.items())[:5]})}")
         
         # Extract bias from metadata - try multiple fields
         bias_db = 0.0
