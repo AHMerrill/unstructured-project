@@ -386,10 +386,23 @@ def encode_topic(text):
 def encode_stance(text):
     return stance_model.encode(text, normalize_embeddings=True)
 
-def infer_bias_from_text(text, client):
-    """Infer bias score from article text using GPT"""
+def infer_source_name(text):
+    """Extract source name from article text"""
+    # Try to find URL or domain name
+    url_match = re.search(r'https?://([^/\s]+)', text)
+    if url_match:
+        domain = url_match.group(1).lower()
+        domain = domain.replace("www.", "")
+        source = domain.split(".")[0]
+        return source.capitalize()
+    return "Unknown"
+
+def infer_bias_from_text(text, source_name, client):
+    """Infer bias score from article text using GPT and source"""
     try:
         prompt = f"""Analyze this article and determine its political bias score.
+        Article is from: {source_name}
+        
         Return a number between -1.0 (far left) and 1.0 (far right).
         
         Article excerpt: {text[:1000]}
@@ -459,18 +472,35 @@ if uploaded:
     progress_bar = st.progress(0)
     status_text = st.empty()
 
-    # Step 1: Infer bias
-    status_text.text("Step 1/4: Inferring article bias...")
-    progress_bar.progress(20)
+    # Step 1: Infer source
+    status_text.text("Step 1/5: Detecting source...")
+    progress_bar.progress(10)
+    
+    inferred_source = infer_source_name(text)
+    source_confirmed = st.text_input(
+        "Confirm or edit the source:", 
+        value=inferred_source,
+        key="source_input",
+        help="The publication or outlet name. Press Enter to confirm."
+    )
+    
+    if not source_confirmed or source_confirmed == "":
+        st.stop()
+    
+    st.success(f"✓ Source: **{source_confirmed}**")
+    
+    # Step 2: Infer bias
+    status_text.text("Step 2/5: Inferring article bias...")
+    progress_bar.progress(30)
     
     with st.spinner("Inferring article bias..."):
-        bias_uploaded = infer_bias_from_text(text, openai_client)
+        bias_uploaded = infer_bias_from_text(text, source_confirmed, openai_client)
     
     st.success(f"✓ Detected bias: **{interpret_bias(bias_uploaded)}** (score: {bias_uploaded:.2f})")
     
-    # Step 2: Generate embeddings
-    status_text.text("Step 2/4: Generating topic and stance embeddings...")
-    progress_bar.progress(40)
+    # Step 3: Generate embeddings
+    status_text.text("Step 3/5: Generating topic and stance embeddings...")
+    progress_bar.progress(50)
     
     with st.spinner("Generating embeddings..."):
         topic_vec = encode_topic(text)
@@ -478,9 +508,9 @@ if uploaded:
     
     st.success("✓ Generated semantic embeddings")
 
-    # Step 3: Search database
-    status_text.text("Step 3/4: Searching database for similar articles...")
-    progress_bar.progress(60)
+    # Step 4: Search database
+    status_text.text("Step 4/5: Searching database for similar articles...")
+    progress_bar.progress(70)
     
     with st.spinner("Searching database..."):
         # Get top candidates using similarity search
@@ -503,9 +533,9 @@ if uploaded:
     stance_dict = {s_md.get("id", "").split("::")[0]: (s_emb, s_md) 
                    for s_emb, s_md in zip(stance_docs["embeddings"], stance_docs["metadatas"])}
 
-    # Step 4: Calculate scores
-    status_text.text("Step 4/4: Calculating anti-echo scores...")
-    progress_bar.progress(80)
+    # Step 5: Calculate scores
+    status_text.text("Step 5/5: Calculating anti-echo scores...")
+    progress_bar.progress(90)
 
     all_matches = []
     for i, (emb, md) in enumerate(zip(candidate_embeddings, candidate_metadatas)):
@@ -573,7 +603,26 @@ if uploaded:
         st.warning("No articles matched the search criteria.")
     else:
         st.write(f"Found **{len(df)}** articles with ideologically diverse coverage:")
-        st.dataframe(df[["title", "source", "anti_echo_score", "bias_score"]], use_container_width=True)
+        
+        # Display results organized like notebook
+        for idx, row in df.iterrows():
+            with st.expander(f"{idx+1}. {row['title']} — {row['source']}"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown(f"**Source:** {row['source']}")
+                    st.markdown(f"**Bias:** {interpret_bias(row['bias_score'])} ({row['bias_score']:.2f})")
+                    st.markdown(f"**Bias Family:** {row['bias_family']}")
+                with col2:
+                    st.markdown(f"**Anti-Echo Score:** {row['anti_echo_score']:.3f}")
+                    st.markdown(f"**Summary Similarity:** {row['summary_similarity']:.3f}")
+                    st.markdown(f"**Stance Similarity:** {row['stance_similarity']:.3f}")
+                
+                if row.get('url'):
+                    st.markdown(f"🔗 [Read Article]({row['url']})")
+        
+        st.markdown("---")
+        st.subheader("📊 Detailed Metrics")
+        st.dataframe(df[["title", "source", "anti_echo_score", "summary_similarity", "stance_similarity", "bias_score", "bias_family", "url"]], use_container_width=True)
         
         st.markdown("---")
         st.subheader("📥 Download Results")
