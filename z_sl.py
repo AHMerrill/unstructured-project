@@ -700,14 +700,11 @@ if uploaded:
     status_text.text("Step 6/6: Calculating anti-echo scores...")
     progress_bar.progress(85)
 
-    # Use the topics list we have (currently empty, using summary similarity primarily)
+    # We now extract canonical topics via hierarchical clustering + anchor matching
 
     # Constants from notebook
-    # NOTE: Set topic threshold to 0.0 since we don't extract canonical topics for uploaded article
-    # The notebook extracts topics via hierarchical clustering + anchor matching in Stage 5a
-    # For simplicity, we rely primarily on summary similarity (0.8 threshold)
-    CANONICAL_TOPIC_THRESHOLD = 0.0  # Disabled: app doesn't extract canonical topics yet
-    SUMMARY_SIMILARITY_THRESHOLD = 0.8
+    CANONICAL_TOPIC_THRESHOLD = 0.3  # Must have 30% canonical topic overlap
+    SUMMARY_SIMILARITY_THRESHOLD = 0.8  # Must have 80% summary similarity
 
     all_matches = []
     # Load the topic summary text (stored in Stage 5a)
