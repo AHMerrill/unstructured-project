@@ -446,6 +446,41 @@ def infer_bias_from_text(text, source_name, client):
         pass
     return 0.0  # Neutral fallback
 
+def infer_stance_classification(text, source_name, client):
+    """Generate stance classification text for embedding"""
+    try:
+        prompt = f"""You are a political analyst. Based on the article below, classify its overall political leaning (tone) and implied stance.
+
+        Leaning options: progressive left, center-left, center, center-right, conservative right, libertarian right, unknown
+        Stance examples: critical of government, supportive of business, anti-war, pro-immigration, fiscal conservative
+        
+        Return JSON with fields:
+        - political_leaning (string)
+        - implied_stance (string)
+        - summary (one-sentence summary of the article's main argument)
+        
+        Article from: {source_name}
+        Excerpt: {text[:2000]}
+        """
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=256,
+            temperature=0.4
+        )
+        
+        raw = response.choices[0].message.content.strip()
+        try:
+            stance_data = json.loads(raw)
+            # Combine fields for embedding
+            stance_text = f"{stance_data.get('political_leaning', 'unknown')}\n{stance_data.get('implied_stance', 'unknown')}\n{stance_data.get('summary', raw)}"
+            return stance_text
+        except:
+            return raw  # Fallback to raw text
+    except:
+        return "unknown\nunknown\nNo summary available"
+
 def topic_overlap_simple(upload_topics, candidate_topics):
     """Calculate Jaccard similarity between topic lists"""
     if not upload_topics or not candidate_topics:
@@ -529,19 +564,58 @@ if uploaded:
     
     st.success(f"✓ Detected bias: **{interpret_bias(bias_uploaded)}** (score: {bias_uploaded:.2f})")
     
-    # Step 3: Generate embeddings
-    status_text.text("Step 3/5: Generating topic and stance embeddings...")
-    progress_bar.progress(50)
+    # Step 3: Generate topic summary with GPT
+    status_text.text("Step 3/5: Generating GPT topic summary...")
+    progress_bar.progress(45)
+    
+    topic_summary_prompt = f"""Summarize the main subject matter of this article in one sentence (max 20 words).
+    Be concrete and specific about what event, person, location, or issue is discussed.
+    Focus on the WHO/WHAT/WHERE, not opinion or analysis.
+    
+    Article title: {uploaded.name}
+    Text excerpt: {text[:2500]}
+    
+    Summary:"""
+    
+    with st.spinner("Generating GPT topic summary..."):
+        summary_response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": topic_summary_prompt}],
+            max_tokens=40,
+            temperature=0.3
+        )
+        topic_summary = summary_response.choices[0].message.content.strip().strip('"').strip("'")
+    
+    st.success(f"✓ Topic summary: {topic_summary}")
+    
+    # Step 4: Generate embeddings (composite topic + stance)
+    status_text.text("Step 4/5: Generating embeddings...")
+    progress_bar.progress(60)
     
     with st.spinner("Generating embeddings..."):
-        topic_vec = encode_topic(text)
-        stance_vec = encode_stance(text)
+        # Base topic embedding
+        topic_vec_base = encode_topic(text)
+        # Embed the GPT summary
+        topic_summary_vec = encode_topic(topic_summary)
+        
+        # Composite: [base | summary]
+        if topic_vec_base.ndim == 2:
+            topic_vec_base = topic_vec_base.flatten()
+        if topic_summary_vec.ndim == 2:
+            topic_summary_vec = topic_summary_vec.flatten()
+        topic_vec = np.concatenate([topic_vec_base, topic_summary_vec])
+        
+        # Generate stance classification with GPT
+        stance_classification = infer_stance_classification(text, st.session_state.source_confirmed, openai_client)
+        
+        # Embed the stance classification
+        stance_vec = encode_stance(stance_classification)
     
-    st.success("✓ Generated semantic embeddings")
+    st.success("✓ Generated composite topic embeddings and stance embeddings")
 
-    # Step 4: Search database
-    status_text.text("Step 4/5: Searching database for similar articles...")
-    progress_bar.progress(70)
+    # Step 5: Search database
+    status_text.text("Step 5/6: Searching database for similar articles...")
+    progress_bar.progress(75)
     
     with st.spinner("Searching database..."):
         # Get top candidates using similarity search
@@ -564,9 +638,9 @@ if uploaded:
     stance_dict = {s_md.get("id", "").split("::")[0]: (s_emb, s_md) 
                    for s_emb, s_md in zip(stance_docs["embeddings"], stance_docs["metadatas"])}
 
-    # Step 5: Calculate scores
-    status_text.text("Step 5/5: Calculating anti-echo scores...")
-    progress_bar.progress(90)
+    # Step 6: Calculate scores
+    status_text.text("Step 6/6: Calculating anti-echo scores...")
+    progress_bar.progress(85)
 
     all_matches = []
     for i, (emb, md) in enumerate(zip(candidate_embeddings, candidate_metadatas)):
@@ -589,34 +663,56 @@ if uploaded:
             st.caption(f"🔍 Debug: Sample values - bias_score={md.get('bias_score')}, type={type(md.get('bias_score'))}, source={md.get('source')}")
             st.caption(f"🔍 Debug: All sample metadata: {json.dumps({k: str(v)[:50] for k, v in list(md.items())[:5]})}")
         
-        # Extract bias from metadata - try multiple fields
+        # Extract bias from metadata - try multiple fields and types
         bias_db = 0.0
         
-        # Direct bias_score field
+        # Direct bias_score field - try multiple conversions
         if "bias_score" in md:
             try:
-                bias_db = float(md["bias_score"])
+                val = md["bias_score"]
+                if isinstance(val, (int, float)):
+                    bias_db = float(val)
+                elif isinstance(val, str):
+                    # Try to parse if it's a string
+                    if val.strip():
+                        bias_db = float(val)
             except (ValueError, TypeError):
                 pass
         
         # Nested in source_bias dict
         if bias_db == 0.0 and "source_bias" in md:
             try:
-                if isinstance(md["source_bias"], str):
-                    bias_data = json.loads(md["source_bias"])
+                val = md["source_bias"]
+                if isinstance(val, str):
+                    bias_data = json.loads(val)
+                elif isinstance(val, dict):
+                    bias_data = val
                 else:
-                    bias_data = md["source_bias"]
-                if isinstance(bias_data, dict) and "bias_score" in bias_data:
-                    bias_db = float(bias_data["bias_score"])
+                    bias_data = None
+                    
+                if bias_data and isinstance(bias_data, dict) and "bias_score" in bias_data:
+                    score_val = bias_data["bias_score"]
+                    if isinstance(score_val, (int, float)):
+                        bias_db = float(score_val)
+                    elif isinstance(score_val, str) and score_val.strip():
+                        bias_db = float(score_val)
             except (json.JSONDecodeError, ValueError, TypeError, KeyError):
                 pass
         
         # Try extracting from any nested structure
         if bias_db == 0.0:
             for key in ["bias", "political_bias", "ideology"]:
-                if key in md and isinstance(md[key], (int, float)):
-                    bias_db = float(md[key])
-                    break
+                if key in md:
+                    try:
+                        val = md[key]
+                        if isinstance(val, (int, float)):
+                            bias_db = float(val)
+                        elif isinstance(val, str) and val.strip():
+                            bias_db = float(val)
+                        if bias_db != 0.0:
+                            break
+                    except (ValueError, TypeError):
+                        pass
         
         # Get tone from stance metadata if available
         tone_db = bias_db  # Default
