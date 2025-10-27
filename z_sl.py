@@ -619,7 +619,12 @@ if uploaded:
     
     with st.spinner("Searching database..."):
         # Database has 768-dim embeddings, query with just the base topic embedding
-        query_vec = topic_vec[:768] if len(topic_vec) > 768 else topic_vec
+        if len(topic_vec) == 1536:
+            query_vec = topic_vec[:768]
+        else:
+            query_vec = topic_vec
+        
+        assert len(query_vec) == 768, f"Query vector must be 768 dim, got {len(query_vec)}"
         
         # Get top candidates using similarity search
         search_results = topic_coll.query(
@@ -647,10 +652,8 @@ if uploaded:
 
     all_matches = []
     for i, (emb, md) in enumerate(zip(candidate_embeddings, candidate_metadatas)):
-        # Calculate similarities - use first 768 dims for consistency
-        comp_emb = emb[:768] if len(emb) > 768 else emb
-        comp_vec = query_vec[:768] if len(query_vec) > 768 else query_vec
-        summary_similarity = float(cosine_similarity([comp_vec], [comp_emb])[0][0])
+        # Calculate similarities - embeddings in DB are 768 dim
+        summary_similarity = float(cosine_similarity([query_vec], [emb])[0][0])
         
         # Match stance by article ID
         article_id_base = md.get("id", "").split("::")[0]
@@ -675,12 +678,15 @@ if uploaded:
         if "bias_score" in md:
             try:
                 val = md["bias_score"]
-                if isinstance(val, (int, float)):
+                if val == 0 or val == "0" or val == "0.0":
+                    bias_db = 0.0  # Explicitly handle zero
+                elif isinstance(val, (int, float)):
                     bias_db = float(val)
                 elif isinstance(val, str):
                     # Try to parse if it's a string
-                    if val.strip():
-                        bias_db = float(val)
+                    cleaned = val.strip()
+                    if cleaned and cleaned != "":
+                        bias_db = float(cleaned)
             except (ValueError, TypeError):
                 pass
         
