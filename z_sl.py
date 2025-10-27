@@ -658,6 +658,11 @@ if uploaded:
         flat_topics = list(dict.fromkeys(all_labels))[:8]
         upload_topics_list = flat_topics
         
+        # Display canonical topics (like notebook lines 1209-1211)
+        st.markdown("**Canonical Topics Assigned:**")
+        for t in flat_topics:
+            st.markdown(f"- {t}")
+        
         # Use first (primary) topic vector like notebook
         topic_vec = topic_vecs_list[0] if topic_vecs_list else encode_topic(text)
         if topic_vec.ndim == 2:
