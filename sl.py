@@ -1,5 +1,5 @@
 # ================================================================
-# sl.py — Anti-Echo Chamber Streamlit Application
+# z_sl.py — Anti-Echo Chamber Streamlit Application
 # ================================================================
 # Matches functionality of anti_echo_chamber.ipynb
 # This app compares a user-uploaded article to a curated corpus
@@ -1048,5 +1048,7 @@ if uploaded:
     )
 
 if st.button("🔄 Analyze Another Article"):
-    st.session_state.source_confirmed = None
+    # Clear all session state to force full re-analysis
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
     st.rerun()
