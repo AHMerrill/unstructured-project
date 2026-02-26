@@ -40,7 +40,7 @@ except LookupError:
 # ------------------------------------------------------------
 st.set_page_config(page_title="📰 Anti-Echo Chamber", layout="wide")
 
-PROJECT_ROOT = Path(__file__).parent.resolve()
+PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 CONFIG_DIR   = PROJECT_ROOT / "config"
 TMP          = PROJECT_ROOT / "tmp"
 CHROMA_PATH  = PROJECT_ROOT / "chroma_db"

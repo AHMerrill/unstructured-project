@@ -17,7 +17,7 @@ This repository handles scraping, embedding, batching, and coordination for the 
 
 ### 1. Scraper and batch builder
 
-<a target="_blank" href="https://colab.research.google.com/github/AHMerrill/unstructured-project/blob/main/scraper_artifacts.ipynb">
+<a target="_blank" href="https://colab.research.google.com/github/AHMerrill/unstructured-project/blob/main/notebooks/scraper_artifacts.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
 </a>
 
@@ -27,11 +27,38 @@ _Run this notebook to scrape, embed, and publish new batches to the Hugging Face
 
 ### 2. Analysis and stance comparison
 
-<a target="_blank" href="https://colab.research.google.com/github/AHMerrill/unstructured-project/blob/main/anti_echo_chamber.ipynb">
+<a target="_blank" href="https://colab.research.google.com/github/AHMerrill/unstructured-project/blob/main/notebooks/anti_echo_chamber.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
 </a>
 
 _Run this notebook to rebuild the Chroma index from Hugging Face, upload an article, and find similar topics with opposing viewpoints._
+
+---
+
+---
+
+## Repository Structure
+
+```
+.
+├── notebooks/               # Jupyter notebooks for analysis and scraping
+│   ├── anti_echo_chamber.ipynb       # Analysis and stance comparison
+│   └── scraper_artifacts.ipynb       # Scraper and batch builder
+├── src/                    # Source code
+│   └── sl.py               # Streamlit application
+├── config/                 # Configuration files and data
+│   ├── config.yaml         # Pipeline configuration
+│   ├── implied_stances.json
+│   ├── political_leanings.json
+│   ├── source_bias.json
+│   ├── topic_anchors.npz
+│   └── topics.json
+├── feeds/                  # RSS feed configurations
+├── artifacts/              # Generated artifacts and registry
+├── example articles/       # Sample PDF articles for testing
+├── requirements.txt        # Python dependencies
+└── README.md               # This file
+```
 
 ---
 
